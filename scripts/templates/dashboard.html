@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — AI 财务助手{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block content %}
+
+{% if snap %}
+<h1>📊 资产总览</h1>
+<p style="color:#64748b;font-size:0.8rem;">更新于 {{ snap.updated }}</p>
+
+<!-- Key metrics -->
+<div class="stat-row">
+    <div class="stat">
+        <div class="val blue">¥{{ "{:,.0f}".format(snap.total_value) }}</div>
+        <div class="lbl">总市值</div>
+    </div>
+    <div class="stat">
+        <div class="val {{ 'green' if snap.total_pnl >= 0 else 'red' }}">
+            {{ '+' if snap.total_pnl >= 0 else '' }}¥{{ "{:,.0f}".format(snap.total_pnl) }}
+        </div>
+        <div class="lbl">总盈亏</div>
+    </div>
+    <div class="stat">
+        <div class="val {{ 'green' if snap.total_pnl_pct >= 0 else 'red' }}">
+            {{ '+' if snap.total_pnl_pct >= 0 else '' }}{{ "{:.1f}".format(snap.total_pnl_pct) }}%
+        </div>
+        <div class="lbl">收益率</div>
+    </div>
+</div>
+
+<!-- Configuration breakdown -->
+<h2>📐 资产配置</h2>
+<div class="card">
+    <div style="display:flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.85rem;">
+        <span>🟦 ETF <b>{{ snap.config.etf_pct }}%</b></span>
+        <span>🟥 股票 <b>{{ snap.config.stock_pct }}%</b></span>
+        <span>🟩 基金 <b>{{ snap.config.fund_pct }}%</b></span>
+        <span>⬛ 现金 <b>{{ snap.config.cash }}%</b></span>
+    </div>
+    <div class="bar-wrap">
+        <div style="display:flex; width:100%; height:100%;">
+            <div class="bar bar-etf" style="width:{{ snap.config.etf_pct }}%"></div>
+            <div class="bar bar-stock" style="width:{{ snap.config.stock_pct }}%"></div>
+            <div class="bar bar-fund" style="width:{{ snap.config.fund_pct }}%"></div>
+            <div class="bar bar-cash" style="width:{{ snap.config.cash }}%"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Holdings table -->
+<h2>💼 持仓明细</h2>
+<div class="card" style="overflow-x: auto;">
+    <table>
+        <thead>
+            <tr>
+                <th>类型</th><th>代码</th><th>名称</th>
+                <th>现价</th><th>市值</th><th>盈亏</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for h in snap.holdings %}
+            <tr>
+                <td>
+                    {% if 'ETF' in h.type.upper() %}
+                        <span class="tag tag-etf">ETF</span>
+                    {% elif '基金' in h.type %}
+                        <span class="tag tag-fund">基金</span>
+                    {% else %}
+                        <span class="tag tag-stock">股票</span>
+                    {% endif %}
+                </td>
+                <td>{{ h.code }}</td>
+                <td>{{ h.name }}</td>
+                <td>{{ h.price }}</td>
+                <td>{{ h.value }}</td>
+                <td class="{{ 'green' if '🟢' in h.pnl else 'red' }}">{{ h.pnl }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% else %}
+<div class="empty">
+    <p style="font-size:2rem;">📭</p>
+    <p>暂无数据，请先运行 <code>python scripts/market_data.py</code></p>
+</div>
+{% endif %}
+
+<!-- Recent reports -->
+<h2>📋 近期报告</h2>
+<div class="card">
+    {% if reports %}
+        {% for r in reports %}
+        <div class="report-item">
+            <div>
+                <strong>{{ r.label }}</strong>
+                <div class="meta">{{ r.time }} · {{ r.size }}</div>
+            </div>
+            <span style="font-size:1.2rem;">📄</span>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty"><p>暂无分析报告</p></div>
+    {% endif %}
+</div>
+
+{% endblock %}

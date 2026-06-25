@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}历史净值 — AI 财务助手{% endblock %}
+{% block nav_history %}active{% endblock %}
+{% block content %}
+
+<h1>📈 历史净值</h1>
+
+{% if chart_url %}
+<div class="card">
+    <img src="{{ chart_url }}" alt="历史净值走势" class="chart-img">
+</div>
+{% endif %}
+
+<h2>📊 近期记录</h2>
+<div class="card" style="overflow-x: auto;">
+    {% if rows %}
+    <table>
+        <thead>
+            <tr>
+                <th>日期</th><th>总市值</th><th>总成本</th><th>盈亏</th><th>收益率</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows|reverse %}
+            <tr>
+                <td>{{ r.get('date', '') }}</td>
+                <td>¥{{ "{:,.0f}".format(r.get('total_value', 0)|float) }}</td>
+                <td>¥{{ "{:,.0f}".format(r.get('total_cost', 0)|float) }}</td>
+                {% set pnl = r.get('total_pnl', 0)|float %}
+                <td class="{{ 'green' if pnl >= 0 else 'red' }}">
+                    {{ '+' if pnl >= 0 else '' }}¥{{ "{:,.0f}".format(pnl) }}
+                </td>
+                {% set pct = r.get('pnl_pct', 0)|float %}
+                <td class="{{ 'green' if pct >= 0 else 'red' }}">
+                    {{ '+' if pct >= 0 else '' }}{{ "{:.2f}".format(pct) }}%
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty"><p>暂无历史数据</p></div>
+    {% endif %}
+</div>
+
+{% endblock %}
