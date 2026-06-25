@@ -173,6 +173,13 @@ def main():
 
     print(f"📁 分析报告已保存到: {output_path}")
 
+    # 微信推送
+    try:
+        from wechat_push import push_analysis_summary
+        push_analysis_summary(str(output_path), prompt_name=Path(args.prompt).stem)
+    except Exception as e:
+        print(f"⚠️ 微信推送跳过: {e}")
+
 
 if __name__ == "__main__":
     main()

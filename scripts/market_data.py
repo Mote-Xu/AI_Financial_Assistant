@@ -1,8 +1,14 @@
 """
 市场数据获取脚本
-支持 A 股 ETF、基金净值查询，使用 akshare（免费、无 API Key）
+支持 A 股个股、ETF、基金净值，使用 akshare（免费、无 API Key）
 运行: python scripts/market_data.py
 """
+
+import os
+# 绕过系统代理（代理 127.0.0.1:19395 未运行，导致 eastmoney 接口超时）
+for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY"]:
+    os.environ.pop(k, None)
+os.environ["NO_PROXY"] = "*"
 
 import akshare as ak
 import pandas as pd
@@ -16,7 +22,7 @@ FINANCE_DIR = PROJECT_ROOT / "finance"
 
 
 def parse_assets_md(filepath: str = None) -> dict:
-    """解析 assets.md 中的持仓，提取股票/ETF代码和基金代码"""
+    """解析 assets.md 中的持仓"""
     if filepath is None:
         filepath = FINANCE_DIR / "assets.md"
 
@@ -24,8 +30,6 @@ def parse_assets_md(filepath: str = None) -> dict:
         content = f.read()
 
     holdings = {"stocks": [], "funds": []}
-
-    # 解析股票/ETF表格（匹配 | 代码 | 名称 | ...）
     stock_section = False
     fund_section = False
 
@@ -43,54 +47,110 @@ def parse_assets_md(filepath: str = None) -> dict:
             fund_section = False
             continue
 
-        # 匹配表格行：| 510300 | 沪深300 ETF | 2,000 | ...
         if stock_section:
             match = re.match(
-                r"\|\s*(\d{6})\s*\|\s*(.+?)\s*\|\s*([\d,]+)\s*\|\s*([\d.]+)\s*\|", line
+                r"\|\s*(\d{6})\s*\|\s*(.+?)\s*\|\s*([\d,]+)\s*\|\s*([\d,.]+)\s*\|", line
             )
             if match:
                 holdings["stocks"].append({
                     "code": match.group(1),
                     "name": match.group(2).strip(),
                     "shares": int(match.group(3).replace(",", "")),
-                    "cost": float(match.group(4)),
+                    "cost": float(match.group(4).replace(",", "")),
                 })
 
         if fund_section:
             match = re.match(
-                r"\|\s*(\d{6})\s*\|\s*(.+?)\s*\|\s*([\d,]+)\s*\|\s*([\d.]+)\s*\|", line
+                r"\|\s*(\d{6})\s*\|\s*(.+?)\s*\|\s*([\d,]+)\s*\|\s*([\d,.]+)\s*\|", line
             )
             if match:
                 holdings["funds"].append({
                     "code": match.group(1),
                     "name": match.group(2).strip(),
                     "shares": int(match.group(3).replace(",", "")),
-                    "cost": float(match.group(4)),
+                    "cost": float(match.group(4).replace(",", "")),
                 })
 
     return holdings
 
 
-def fetch_etf_prices(codes: list) -> dict:
-    """获取ETF实时价格（akshare）"""
+def fetch_stock_and_etf_prices(codes: list) -> dict:
+    """获取个股 + ETF 实时价格，自动区分"""
     prices = {}
-    print("📊 获取 ETF 行情...")
+    print("📊 获取股票/ETF 行情...")
+
+    # 先拉 ETF 列表
+    etf_codes = set()
     try:
-        df = ak.fund_etf_spot_em()
-        for code in codes:
-            match = df[df["代码"] == code]
-            if not match.empty:
-                row = match.iloc[0]
-                prices[code] = {
-                    "name": row["名称"],
-                    "price": float(row["最新价"]),
-                    "change_pct": float(row["涨跌幅"]) if "涨跌幅" in row else 0,
-                }
-                print(f"  ✅ {code} {row['名称']}: ¥{row['最新价']}")
-            else:
-                print(f"  ⚠️ 未找到 ETF: {code}")
-    except Exception as e:
-        print(f"  ❌ ETF 行情获取失败: {e}")
+        etf_df = ak.fund_etf_spot_em()
+        etf_codes = set(etf_df["代码"].tolist())
+    except Exception:
+        pass
+
+    # 拉全部 A 股行情（优先 eastmoney，失败则用新浪）
+    stock_df = None
+    for src_name, src_fn in [
+        ("eastmoney", ak.stock_zh_a_spot_em),
+        ("sina", ak.stock_zh_a_spot),
+    ]:
+        try:
+            stock_df = src_fn()
+            if stock_df is not None and not stock_df.empty:
+                break
+        except Exception:
+            continue
+
+    if stock_df is None:
+        print("  ⚠️ 所有 A 股数据源均不可用，仅获取 ETF 行情")
+
+    for code in codes:
+        if code in etf_codes:
+            try:
+                match = etf_df[etf_df["代码"] == code]
+                if not match.empty:
+                    row = match.iloc[0]
+                    prices[code] = {
+                        "name": row["名称"],
+                        "price": float(row["最新价"]),
+                        "change_pct": float(row["涨跌幅"]) if "涨跌幅" in row else 0,
+                        "type": "ETF",
+                    }
+                    print(f"  ✅ [ETF] {code} {row['名称']}: ¥{row['最新价']}")
+                    continue
+            except Exception:
+                pass
+
+        # A 股个股（eastmoney 或 sina）
+        if stock_df is not None:
+            try:
+                # Sina API 代码格式为 sh600519 / sz300750，eastmoney 为纯数字
+                match = stock_df[stock_df["代码"] == code]
+                if match.empty:
+                    # 尝试带前缀匹配
+                    prefix = "sh" if code.startswith(("6", "5", "9")) else "sz"
+                    match = stock_df[stock_df["代码"] == prefix + code]
+                if not match.empty:
+                    row = match.iloc[0]
+                    price_val = float(row["最新价"])
+                    if price_val > 0:
+                        change_val = row.get("涨跌幅", 0)
+                        try:
+                            change_val = float(change_val) if pd.notna(change_val) else 0
+                        except (ValueError, TypeError):
+                            change_val = 0
+                        prices[code] = {
+                            "name": row["名称"],
+                            "price": price_val,
+                            "change_pct": change_val,
+                            "type": "股票",
+                        }
+                        print(f"  ✅ [股票] {code} {row['名称']}: ¥{price_val}")
+                        continue
+            except Exception:
+                pass
+
+        print(f"  ⚠️ 未找到: {code}")
+
     return prices
 
 
@@ -104,13 +164,13 @@ def fetch_fund_nav(codes: list) -> dict:
             if not df.empty:
                 latest = df.iloc[-1]
                 navs[code] = {"name": code, "nav": float(latest["单位净值"]), "date": str(latest["净值日期"])}
-                print(f"  ✅ {code}: ¥{latest['单位净值']} ({latest['净值日期']})")
+                print(f"  ✅ [基金] {code}: ¥{latest['单位净值']} ({latest['净值日期']})")
         except Exception as e:
             print(f"  ⚠️ 基金 {code} 净值获取失败: {e}")
     return navs
 
 
-def generate_summary(holdings: dict, etf_prices: dict, fund_navs: dict) -> str:
+def generate_summary(holdings: dict, security_prices: dict, fund_navs: dict) -> str:
     """生成持仓汇总"""
     lines = ["\n## 📈 当前市值汇总", f"_更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}_\n"]
     lines.append("| 类型 | 代码 | 名称 | 持仓量 | 成本价 | 现价 | 市值 | 盈亏 |")
@@ -120,14 +180,15 @@ def generate_summary(holdings: dict, etf_prices: dict, fund_navs: dict) -> str:
     total_cost = 0
 
     for s in holdings["stocks"]:
-        p = etf_prices.get(s["code"], {})
+        p = security_prices.get(s["code"], {})
         price = p.get("price", 0)
+        stype = p.get("type", "证券")
         mv = price * s["shares"]
         cost = s["cost"] * s["shares"]
         pnl = mv - cost
         pnl_pct = (pnl / cost * 100) if cost > 0 else 0
         lines.append(
-            f"| ETF | {s['code']} | {s['name']} | {s['shares']} | "
+            f"| {stype} | {s['code']} | {s['name']} | {s['shares']:,} | "
             f"¥{s['cost']:.2f} | ¥{price:.3f} | ¥{mv:,.0f} | "
             f"{'🟢' if pnl>=0 else '🔴'} ¥{pnl:,.0f} ({pnl_pct:+.1f}%) |"
         )
@@ -142,7 +203,7 @@ def generate_summary(holdings: dict, etf_prices: dict, fund_navs: dict) -> str:
         pnl = mv - cost
         pnl_pct = (pnl / cost * 100) if cost > 0 else 0
         lines.append(
-            f"| 基金 | {f['code']} | {f['name']} | {f['shares']} | "
+            f"| 基金 | {f['code']} | {f['name']} | {f['shares']:,} | "
             f"¥{f['cost']:.2f} | ¥{nav:.4f} | ¥{mv:,.0f} | "
             f"{'🟢' if pnl>=0 else '🔴'} ¥{pnl:,.0f} ({pnl_pct:+.1f}%) |"
         )
@@ -164,36 +225,32 @@ def main():
     print("💰 AI 财务助手 — 市场数据更新")
     print("=" * 50)
 
-    # 解析持仓
     holdings = parse_assets_md()
 
     if not holdings["stocks"] and not holdings["funds"]:
         print("⚠️ assets.md 中未找到持仓，请检查格式。")
         sys.exit(0)
 
-    print(f"📋 找到 {len(holdings['stocks'])} 只 ETF, {len(holdings['funds'])} 只基金\n")
+    print(f"📋 找到 {len(holdings['stocks'])} 只股票/ETF, {len(holdings['funds'])} 只基金\n")
 
-    # 获取行情
-    etf_prices = {}
+    security_prices = {}
     fund_navs = {}
 
     if holdings["stocks"]:
-        etf_prices = fetch_etf_prices([s["code"] for s in holdings["stocks"]])
+        security_prices = fetch_stock_and_etf_prices([s["code"] for s in holdings["stocks"]])
 
     if holdings["funds"]:
         fund_navs = fetch_fund_nav([f["code"] for f in holdings["funds"]])
 
-    # 生成汇总
-    summary = generate_summary(holdings, etf_prices, fund_navs)
+    summary = generate_summary(holdings, security_prices, fund_navs)
     print(summary)
 
-    # 输出到文件
     output_file = FINANCE_DIR / "portfolio_snapshot.md"
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(summary)
     print(f"\n📁 汇总已保存到: {output_file}")
 
-    return holdings, etf_prices, fund_navs
+    return holdings, security_prices, fund_navs
 
 
 if __name__ == "__main__":
