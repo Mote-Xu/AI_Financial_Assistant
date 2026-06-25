@@ -14,21 +14,18 @@ AI_Financial_Assistant/
 ├── GEMINI_PROMPT.md            # 外部 AI 项目总结
 ├── PRIVATE.md                  # 🔒 真实数据（gitignore）
 ├── .env                        # 🔒 API Keys（gitignore）
+├── .env.example                # 配置模板（git 跟踪）
 ├── .gitignore
 ├── run_auto.bat                # 定时体检入口
 ├── run_alert.bat               # 每日预警入口
 ├── setup_old_pc.bat            # 老电脑一键部署
-├── finance/
-│   ├── assets.md               # 资产（当前为 John Doe 演示数据）
-│   ├── income.md               # 收入支出
-│   ├── insurance.md            # 保单
-│   ├── liabilities.md          # 负债
-│   ├── goals.md                # 目标
-│   ├── history.csv             # [自动] 历史净值
-│   ├── portfolio_snapshot.md   # [自动] 市值快照
-│   ├── finance_data.db         # [自动] SQLite 数据库（gitignore）
-│   └── analysis_*.md           # [自动] 分析报告
+├── finance_demo/               # Demo 数据（John Doe，git 跟踪）
+│   ├── assets.md / income.md / insurance.md / liabilities.md / goals.md
+│   ├── history.csv / portfolio_snapshot.md
+│   └── analysis_*.md
+├── finance/                    # 🔒 真实数据（gitignore，由 FINANCE_DATA_DIR 切换）
 ├── scripts/
+│   ├── config.py               # 集中式路径配置（读 FINANCE_DATA_DIR 环境变量）
 │   ├── market_data.py          # 行情拉取（ETF+个股+基金 + CSV+DB 存档）
 │   ├── deepseek_analysis.py    # DeepSeek 分析（--no-push --auto-commit）
 │   ├── auto_runner.py          # 全自动流水线（--alert 模式）
@@ -36,7 +33,7 @@ AI_Financial_Assistant/
 │   ├── history.py              # 历史查询 + 图表（--plot）
 │   ├── database.py             # SQLite 引擎
 │   ├── db_query.py             # 数据库查询工具
-│   ├── wecom_push.py           # 企微推送（多段拆分）
+│   ├── wecom_push.py           # 企微推送（文本+文件直发+图片）
 │   ├── wechat_push.py          # Server酱推送（兜底）
 │   └── requirements.txt
 └── prompts/
@@ -83,7 +80,7 @@ python scripts/auto_runner.py --alert            # 仅预警
 - Python：`deepseek_v4_api` conda 或纯 pip
 - 行情：akshare（ETF/eastmoney + A股/Sina 双源）
 - 分析：DeepSeek API `deepseek-chat`（timeout=120s）
-- 推送：企微 Webhook（主）+ Server酱（备）
+- 推送：企微 Webhook（主：文本 + 文件直发 + 图片）+ Server酱（备）
 - 代理：启动时清 HTTP_PROXY，eastmoney 被拦自动切 Sina
 
 ---
@@ -101,13 +98,15 @@ python scripts/auto_runner.py --alert            # 仅预警
 - 当前数据为 John Doe 虚构演示
 - `PRIVATE.md` + `.env` + `finance_data.db` → gitignore
 - 分析时数据发送至 DeepSeek API
-- 报告暂通过 GitHub Private Repo 链接查看
+- 报告通过企微文件直发（主力）+ GitHub Public Repo（备份，只含 demo 数据）
+- 代码与数据分离：`FINANCE_DATA_DIR` 环境变量切换 demo/真实数据目录
 
 ---
 
 ## 下一步
 
-1. 企微文件直发（报告不经过 GitHub）
-2. Ubuntu 24/7 部署（cron）
+1. ~~企微文件直发~~ ✅ `push_file()` 上传 → media_id → 文件消息，手机直接打开
+2. ~~代码与数据分离~~ ✅ `config.py` + `FINANCE_DATA_DIR` 环境变量切换，repo public 安全
 3. Flask Web Dashboard + cloudflared tunnel
 4. 企微双向互动（@机器人）
+5. Ubuntu 24/7 部署（cron）

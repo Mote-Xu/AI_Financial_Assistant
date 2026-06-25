@@ -17,14 +17,13 @@ import re
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).parent.parent
-FINANCE_DIR = PROJECT_ROOT / "finance"
+from config import FINANCE_DIR, ASSETS_FILE, INCOME_FILE, SNAPSHOT_FILE, HISTORY_FILE
 
 
 def parse_assets_md(filepath: str = None) -> dict:
     """解析 assets.md 中的持仓"""
     if filepath is None:
-        filepath = FINANCE_DIR / "assets.md"
+        filepath = ASSETS_FILE
 
     with open(filepath, "r", encoding="utf-8") as f:
         content = f.read()
@@ -224,7 +223,7 @@ def save_history(holdings: dict, security_prices: dict, fund_navs: dict,
                  total_value: float, total_cost: float, total_pnl: float):
     """追加一条历史记录到 CSV"""
     import csv
-    history_file = FINANCE_DIR / "history.csv"
+    history_file = HISTORY_FILE
     file_exists = history_file.exists()
 
     # 分类汇总
@@ -240,7 +239,7 @@ def save_history(holdings: dict, security_prices: dict, fund_navs: dict,
     # 读取现金和房产（从 assets.md 的手动写死的小计算）
     # 这些需要从 generate_summary 外部获取，暂时用文件解析
     try:
-        with open(FINANCE_DIR / "assets.md", "r", encoding="utf-8") as f:
+        with open(ASSETS_FILE, "r", encoding="utf-8") as f:
             amd = f.read()
     except Exception:
         amd = ""
@@ -259,7 +258,7 @@ def save_history(holdings: dict, security_prices: dict, fund_navs: dict,
             cm2 = _re.search(r"([\d,]+)", line.split("|")[-2] if "|" in line else line)
     # Fallback: 固定读取
     try:
-        with open(FINANCE_DIR / "income.md", "r", encoding="utf-8") as f:
+        with open(INCOME_FILE, "r", encoding="utf-8") as f:
             imd = f.read()
     except Exception:
         imd = ""
@@ -311,7 +310,7 @@ def main():
     )
     print(summary)
 
-    output_file = FINANCE_DIR / "portfolio_snapshot.md"
+    output_file = SNAPSHOT_FILE
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(summary)
     print(f"\n📁 汇总已保存到: {output_file}")

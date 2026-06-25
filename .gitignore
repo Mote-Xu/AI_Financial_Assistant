@@ -2,8 +2,13 @@
 PRIVATE.md
 .env
 
-# SQLite database (contains financial data)
-finance/finance_data.db
+# Real financial data directory (gitignored)
+# Demo data lives in finance_demo/ (git-tracked)
+finance/
+
+# Auto-generated binary files (even in demo dir)
+finance_demo/finance_data.db
+finance_demo/history_chart.png
 
 # Python
 __pycache__/

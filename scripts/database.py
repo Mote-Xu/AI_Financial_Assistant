@@ -8,8 +8,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-PROJECT_ROOT = Path(__file__).parent.parent
-DB_PATH = PROJECT_ROOT / "finance" / "finance_data.db"
+from config import DB_PATH
 
 
 def get_db() -> sqlite3.Connection:

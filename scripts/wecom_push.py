@@ -1,11 +1,22 @@
 """
 企业微信机器人推送模块
-支持 Markdown，单条 4096 字符（远超 Server酱 500 字限制）
+- 文本消息：Markdown，单条 4096 字节
+- 文件直发：上传文件 → 发送附件，手机直接打开（无需 GitHub 登录）
+- 图片消息：支持 base64 图片发送
+
+企微机器人 Webhook API:
+- 文本: POST /webhook/send?key=KEY  msgtype=markdown
+- 文件: POST /webhook/upload_media?key=KEY&type=file → media_id
+         POST /webhook/send?key=KEY  msgtype=file
+- 图片: POST /webhook/send?key=KEY  msgtype=image (base64)
 """
 
 import requests
 import os
+import base64
 from pathlib import Path
+
+from config import SNAPSHOT_FILE, get_finance_dir_name
 
 
 def _get_webhook():
@@ -56,12 +67,121 @@ def push_wecom(content: str) -> bool:
         return False
 
 
+def upload_file_to_wecom(file_path: str) -> str | None:
+    """
+    上传文件到企微机器人，返回 media_id
+    media_id 有效期 3 天，仅当天有效上传的文件可发送
+    文件大小限制：20MB（Markdown 报告通常 < 50KB，远低于限制）
+    """
+    webhook_url = _get_webhook()
+    if not webhook_url:
+        print("⚠️ 未配置 WECOM_WEBHOOK_KEY，跳过文件上传")
+        return None
+
+    # 从 send URL 推导 upload URL
+    # send:    https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=KEY
+    # upload:  https://qyapi.weixin.qq.com/cgi-bin/webhook/upload_media?key=KEY&type=file
+    upload_url = webhook_url.replace("/send?", "/upload_media?") + "&type=file"
+
+    file_name = Path(file_path).name
+    try:
+        with open(file_path, "rb") as f:
+            resp = requests.post(
+                upload_url,
+                files={"media": (file_name, f, "application/octet-stream")},
+                timeout=30,
+            )
+        data = resp.json()
+        if data.get("errcode") == 0:
+            media_id = data.get("media_id")
+            print(f"📤 文件上传成功: {file_name} (media_id={media_id[:8]}...)")
+            return media_id
+        else:
+            print(f"⚠️ 文件上传失败: {data.get('errmsg', 'unknown')}")
+            return None
+    except Exception as e:
+        print(f"⚠️ 文件上传异常: {e}")
+        return None
+
+
+def push_file(file_path: str) -> bool:
+    """
+    上传文件并推送到企微 — 手机端可直接下载打开
+    返回 True/False 表示是否成功
+    """
+    media_id = upload_file_to_wecom(file_path)
+    if not media_id:
+        return False
+
+    url = _get_webhook()
+    if not url:
+        return False
+
+    file_name = Path(file_path).name
+    try:
+        resp = requests.post(url, json={
+            "msgtype": "file",
+            "file": {"media_id": media_id},
+        }, timeout=10)
+        data = resp.json()
+        if data.get("errcode") == 0:
+            print(f"✅ 文件推送成功: {file_name}")
+            return True
+        else:
+            print(f"⚠️ 文件推送失败: {data.get('errmsg', 'unknown')}")
+            return False
+    except Exception as e:
+        print(f"⚠️ 文件推送异常: {e}")
+        return False
+
+
+def push_image(image_path: str = None, image_base64: str = None, md5: str = None) -> bool:
+    """
+    推送图片到企微 — 支持 base64 或文件路径
+    图片大小限制：base64 编码后不超过 2MB
+    """
+    url = _get_webhook()
+    if not url:
+        print("⚠️ 未配置 WECOM_WEBHOOK_KEY，跳过图片推送")
+        return False
+
+    if image_path:
+        with open(image_path, "rb") as f:
+            image_base64 = base64.b64encode(f.read()).decode("utf-8")
+        import hashlib
+        md5 = hashlib.md5(open(image_path, "rb").read()).hexdigest()
+
+    if not image_base64:
+        print("⚠️ 未提供图片数据")
+        return False
+
+    try:
+        payload = {
+            "msgtype": "image",
+            "image": {
+                "base64": image_base64,
+                "md5": md5 or "",
+            },
+        }
+        resp = requests.post(url, json=payload, timeout=10)
+        data = resp.json()
+        if data.get("errcode") == 0:
+            print("✅ 图片推送成功")
+            return True
+        else:
+            print(f"⚠️ 图片推送失败: {data.get('errmsg', 'unknown')}")
+            return False
+    except Exception as e:
+        print(f"⚠️ 图片推送异常: {e}")
+        return False
+
+
 def push_portfolio_snapshot(snapshot_file: str = None) -> bool:
     """推送市值快照"""
     from datetime import datetime
 
     if snapshot_file is None:
-        snapshot_file = Path(__file__).parent.parent / "finance" / "portfolio_snapshot.md"
+        snapshot_file = str(SNAPSHOT_FILE)
 
     try:
         with open(snapshot_file, "r", encoding="utf-8") as f:
@@ -75,13 +195,49 @@ def push_portfolio_snapshot(snapshot_file: str = None) -> bool:
     return push_wecom(f"## 📈 市值快照 {now}\n\n{content}")
 
 
-def push_analysis(analysis_file: str, prompt_name: str = "") -> bool:
-    """推送报告链接到企微——手机点链接即可查看完整报告"""
+def _extract_summary_from_report(file_path: str, max_lines: int = 15) -> str:
+    """从分析报告中提取摘要（前几行关键内容），用于企微文本消息预览"""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        summary_lines = []
+        in_header = True
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            # 跳过 YAML front matter 和标题行
+            if line.startswith("# ") or line.startswith("> "):
+                if in_header:
+                    summary_lines.append(line)
+                    continue
+            in_header = False
+            # 收集正文（跳过标题标记）
+            if line.startswith("## "):
+                summary_lines.append(line)
+            elif line.startswith("**") or line.startswith("- **"):
+                summary_lines.append(line)
+            elif len(summary_lines) >= max_lines:
+                break
+
+        return "\n".join(summary_lines) if summary_lines else "报告已生成，详情请下载附件查看"
+    except Exception:
+        return "报告已生成，详情请下载附件查看"
+
+
+def push_analysis(analysis_file: str, prompt_name: str = "",
+                  send_file: bool = True) -> bool:
+    """
+    推送分析报告到企微：
+    1. 文件直发 — 手机直接下载打开，无需 GitHub 登录（主要方式）
+    2. 文本摘要 — 关键数据预览 + GitHub 链接备份
+    """
     from datetime import datetime
 
-    # 构建 GitHub 链接（repo 需设为 private 以保护隐私）
     fname = Path(analysis_file).name
-    github_url = f"https://github.com/Mote-Xu/AI_Financial_Assistant/blob/main/finance/{fname}"
+    dir_name = get_finance_dir_name()
+    github_url = f"https://github.com/Mote-Xu/AI_Financial_Assistant/blob/main/{dir_name}/{fname}"
 
     prompt_labels = {
         "monthly_review": "月度体检", "portfolio_rebalance": "再平衡",
@@ -90,53 +246,27 @@ def push_analysis(analysis_file: str, prompt_name: str = "") -> bool:
     label = prompt_labels.get(prompt_name, prompt_name)
     now = datetime.now().strftime("%m/%d %H:%M")
 
+    success = True
+
+    # 1. 文件直发（主要方式，手机直接打开）
+    if send_file:
+        import time
+        file_ok = push_file(analysis_file)
+        if file_ok:
+            # 短暂延迟，确保文件消息先到达
+            time.sleep(0.5)
+        success = file_ok or success
+
+    # 2. 文本摘要 + GitHub 链接备份
+    summary = _extract_summary_from_report(analysis_file)
     msg = f"## 📊 {label} {now}\n\n"
-    msg += f"[👉 点击查看完整报告]({github_url})\n\n"
-    msg += f"> 提示：报告已自动推送到 GitHub，随时可查看"
+    msg += f"📎 报告文件已发送，点击上方附件下载查看\n\n"
+    msg += f"### 内容预览\n{summary}\n\n"
+    msg += f"---\n"
+    msg += f"💾 [👉 GitHub 备份链接]({github_url})\n"
+    msg += f"> 文件直发无网络限制 | GitHub 需登录"
 
-    return push_wecom(msg)
+    text_ok = push_wecom(msg)
+    success = text_ok or success
 
-    # 清理 Markdown 格式 → 纯文本（企微不支持表格等复杂格式）
-    text = re.sub(r"\|", "│", text)      # 表格竖线替换
-    text = re.sub(r"#{2,4}\s+", "", text) # 去标题标记
-    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)  # 去粗体
-    text = re.sub(r"\n\s*\n\s*\n", "\n\n", text)  # 压缩空行
-    text = text.strip()
-
-    # 按 ~1000 字节切块（中文约 330 字/块，确保不超 4096 字节限制）
-    MAX_BYTES = 3500  # 留余量
-    chunks = []
-    raw = text.encode("utf-8")
-    pos = 0
-    chunk_num = 0
-    while pos < len(raw):
-        chunk_num += 1
-        end = min(pos + MAX_BYTES, len(raw))
-        # 尽量在换行处切
-        chunk_bytes = raw[pos:end]
-        chunk_text = chunk_bytes.decode("utf-8", errors="ignore")
-        # 回退到最后一个完整行
-        if end < len(raw):
-            last_nl = chunk_text.rfind("\n")
-            if last_nl > len(chunk_text) // 2:
-                chunk_text = chunk_text[:last_nl]
-                end = pos + len(chunk_text.encode("utf-8"))
-
-        header = f"📊 {label} ({chunk_num}/{chunk_num + max(1, (len(raw)-pos)//MAX_BYTES)}) | {now}\n\n"
-        chunks.append(header + chunk_text.strip())
-        pos = pos + len(chunk_text.encode("utf-8"))
-
-    # 计算实际分块数
-    total_chunks = len(chunks)
-    for i, chunk in enumerate(chunks):
-        # 更新正确的分块信息
-        chunk = re.sub(r"\(\d+/\d+\)", f"({i+1}/{total_chunks})", chunk, count=1)
-        ok = push_wecom(chunk)
-        if not ok:
-            print(f"  ⚠️ 第 {i+1}/{total_chunks} 块推送失败")
-            return False
-        if i < total_chunks - 1:
-            import time
-            time.sleep(0.5)  # 避免发太快被限流
-
-    return True
+    return success

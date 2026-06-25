@@ -8,8 +8,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-PROJECT_ROOT = Path(__file__).parent.parent
-HISTORY_FILE = PROJECT_ROOT / "finance" / "history.csv"
+from config import HISTORY_FILE, CHART_FILE
 
 
 def load_history() -> list:
@@ -103,7 +102,7 @@ def plot_history():
     fig.autofmt_xdate()
     plt.tight_layout()
 
-    out = PROJECT_ROOT / "finance" / "history_chart.png"
+    out = CHART_FILE
     plt.savefig(out, dpi=150, bbox_inches="tight")
     print(f"📊 图表已保存: {out}")
     plt.show()

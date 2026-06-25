@@ -10,7 +10,9 @@ import argparse
 from pathlib import Path
 from openai import OpenAI
 
-PROJECT_ROOT = Path(__file__).parent.parent
+from config import (PROJECT_ROOT, FINANCE_DIR,
+                    ASSETS_FILE, INCOME_FILE, INSURANCE_FILE,
+                    LIABILITIES_FILE, GOALS_FILE, SNAPSHOT_FILE)
 
 
 def load_file(filepath: str) -> str:
@@ -37,19 +39,18 @@ def build_context(
 
     files = []
     if include_assets:
-        files.append(("finance/assets.md", "## 资产明细"))
+        files.append((str(ASSETS_FILE), "## 资产明细"))
     if include_income:
-        files.append(("finance/income.md", "## 营收情况"))
+        files.append((str(INCOME_FILE), "## 营收情况"))
     if include_insurance:
-        files.append(("finance/insurance.md", "## 保险保障"))
+        files.append((str(INSURANCE_FILE), "## 保险保障"))
     if include_liabilities:
-        files.append(("finance/liabilities.md", "## 负债情况"))
+        files.append((str(LIABILITIES_FILE), "## 负债情况"))
     if include_goals:
-        files.append(("finance/goals.md", "## 财务目标"))
+        files.append((str(GOALS_FILE), "## 财务目标"))
     if include_snapshot:
-        snapshot = PROJECT_ROOT / "finance" / "portfolio_snapshot.md"
-        if snapshot.exists():
-            files.append(("finance/portfolio_snapshot.md", "## 📈 最新市值快照"))
+        if SNAPSHOT_FILE.exists():
+            files.append((str(SNAPSHOT_FILE), "## 最新市值快照"))
 
     for path, title in files:
         try:
@@ -178,7 +179,7 @@ def main():
         output_path = PROJECT_ROOT / args.output
     else:
         from datetime import datetime
-        output_path = PROJECT_ROOT / "finance" / f"analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
+        output_path = FINANCE_DIR / f"analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(f"# 财务分析报告\n> 生成时间: {output_path.stem}\n> 提示词: {args.prompt}\n\n")
@@ -209,19 +210,24 @@ def main():
         except Exception as e:
             print(f"⚠️ 自动推送 GitHub 失败: {e}")
 
-    # 推送（企微优先 → Server酱兜底）
+    # 推送（企微文件直发 → Server酱兜底）
     if not args.no_push:
         prompt_stem = Path(args.prompt).stem
+        pushed = False
         try:
             from wecom_push import push_analysis
-            if push_analysis(str(output_path), prompt_name=prompt_stem):
+            pushed = push_analysis(str(output_path), prompt_name=prompt_stem)
+            if pushed:
+                print("📱 企微文件直发完成")
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ 企微推送失败: {e}")
 
+        # Server酱兜底
         try:
             from wechat_push import push_analysis_summary
             push_analysis_summary(str(output_path), prompt_name=prompt_stem)
+            print("📱 Server酱兜底推送完成")
         except Exception as e:
             print(f"⚠️ 推送跳过: {e}")
     else:

@@ -9,6 +9,8 @@ import requests
 import os
 from pathlib import Path
 
+from config import SNAPSHOT_FILE, get_finance_dir_name
+
 # Server酱 SendKey（从 .env 或环境变量读取）
 def _get_sendkey():
     # 先查环境变量
@@ -63,7 +65,7 @@ def push_portfolio_snapshot(snapshot_file: str = None) -> bool:
     from datetime import datetime
 
     if snapshot_file is None:
-        snapshot_file = Path(__file__).parent.parent / "finance" / "portfolio_snapshot.md"
+        snapshot_file = str(SNAPSHOT_FILE)
 
     try:
         with open(snapshot_file, "r", encoding="utf-8") as f:
@@ -94,7 +96,8 @@ def push_analysis_summary(analysis_file: str, prompt_name: str = "") -> bool:
     """推送 GitHub 链接到 Server酱微信"""
     from datetime import datetime
     fname = Path(analysis_file).name
-    github_url = f"https://github.com/Mote-Xu/AI_Financial_Assistant/blob/main/finance/{fname}"
+    dir_name = get_finance_dir_name()
+    github_url = f"https://github.com/Mote-Xu/AI_Financial_Assistant/blob/main/{dir_name}/{fname}"
     now = datetime.now().strftime("%m/%d %H:%M")
 
     return push_wechat(

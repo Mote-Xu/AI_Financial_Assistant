@@ -29,16 +29,18 @@
 
 ## P3 — 下一阶段
 
-- [ ] **企微文件直发**：附件推送，手机直接打开
-- [ ] **Ubuntu 24/7 部署**：cron 替代 Windows 计划任务
+- [x] **企微文件直发**：附件推送，手机直接打开（无需 GitHub 登录）
+- [x] **代码与数据分离**：`FINANCE_DATA_DIR` 环境变量切换，repo public 安全
 - [ ] **Flask Dashboard**：Web 面板 + cloudflared tunnel
 - [ ] **企微双向互动**：@机器人 → Flask 回调
+- [ ] **Ubuntu 24/7 部署**：cron 替代 Windows 计划任务
 - [ ] **FIRE 模拟器**
 - [ ] **定投回测**
 
 ## 非功能需求 ✅
 
 - [x] 真实数据不入 git
-- [x] 脱敏数据可运行
+- [x] 脱敏数据可运行 (demo 在 `finance_demo/`)
 - [x] 错误处理健壮（API/网络/代理）
 - [x] 输出可读（中文/分层/数字）
+- [x] Repo public 安全展示

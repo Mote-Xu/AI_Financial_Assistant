@@ -6,7 +6,6 @@
 
 import sys
 import os
-from pathlib import Path
 
 # 清除代理环境变量
 for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
@@ -14,7 +13,7 @@ for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
 os.environ.setdefault("NO_PROXY", "*")
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
-PROJECT_ROOT = Path(__file__).parent.parent
+from config import PROJECT_ROOT, FINANCE_DIR, SNAPSHOT_FILE, HISTORY_FILE
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from datetime import datetime
@@ -49,7 +48,7 @@ def run_market_data():
     print(summary)
 
     # 保存快照
-    output_file = PROJECT_ROOT / "finance" / "portfolio_snapshot.md"
+    output_file = SNAPSHOT_FILE
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(summary)
 
@@ -59,8 +58,8 @@ def run_market_data():
     return output_file
 
 
-def run_analysis(prompt_name: str = "monthly_review"):
-    """运行分析"""
+def run_analysis(prompt_name: str = "monthly_review", skip_git: bool = False):
+    """运行分析 + 推送（文件直发为主，GitHub 为备份）"""
     from deepseek_analysis import load_file, build_context, call_deepseek
 
     prompt_file = f"prompts/{prompt_name}.md"
@@ -80,7 +79,7 @@ def run_analysis(prompt_name: str = "monthly_review"):
         print(f"❌ 分析失败: {e}")
         return None
 
-    output_path = PROJECT_ROOT / "finance" / \
+    output_path = FINANCE_DIR / \
         f"analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -89,28 +88,37 @@ def run_analysis(prompt_name: str = "monthly_review"):
 
     print(f"📁 报告已保存: {output_path}")
 
-    # 自动推 GitHub
-    import subprocess
-    try:
-        rel = output_path.relative_to(PROJECT_ROOT)
-        subprocess.run(["git", "add", str(rel)], cwd=PROJECT_ROOT, capture_output=True)
-        subprocess.run(["git", "commit", "-m", f"Auto: {prompt_name} {output_path.stem}"],
-                       cwd=PROJECT_ROOT, capture_output=True)
-        subprocess.run(["git", "push"], cwd=PROJECT_ROOT, capture_output=True)
-        print("📤 报告已推送到 GitHub")
-    except Exception as e:
-        print(f"⚠️ GitHub 推送失败: {e}")
+    # Git 备份（可选，文件直发才是主要推送方式）
+    if not skip_git:
+        import subprocess
+        try:
+            rel = output_path.relative_to(PROJECT_ROOT)
+            subprocess.run(["git", "add", str(rel)], cwd=PROJECT_ROOT, capture_output=True)
+            subprocess.run(["git", "commit", "-m", f"Auto: {prompt_name} {output_path.stem}"],
+                           cwd=PROJECT_ROOT, capture_output=True)
+            subprocess.run(["git", "push"], cwd=PROJECT_ROOT, capture_output=True)
+            print("📤 GitHub 备份已推送")
+        except Exception as e:
+            print(f"⚠️ GitHub 备份失败（非致命，文件直发不受影响）: {e}")
 
-    # 推送
+    # 企微推送（文件直发 + 文本摘要）
+    pushed = False
     try:
         from wecom_push import push_analysis
-        push_analysis(str(output_path), prompt_name=prompt_name)
-    except Exception:
+        pushed = push_analysis(str(output_path), prompt_name=prompt_name)
+        if pushed:
+            print("📱 企微文件直发 + 摘要推送完成")
+    except Exception as e:
+        print(f"⚠️ 企微推送失败: {e}")
+
+    # Server酱兜底
+    if not pushed:
         try:
             from wechat_push import push_analysis_summary
             push_analysis_summary(str(output_path), prompt_name=prompt_name)
+            print("📱 Server酱兜底推送完成")
         except Exception as e:
-            print(f"⚠️ 推送失败: {e}")
+            print(f"⚠️ Server酱推送也失败: {e}")
 
     return output_path
 
@@ -118,14 +126,19 @@ def run_analysis(prompt_name: str = "monthly_review"):
 def main():
     prompt_name = "monthly_review"
     run_alert = False
+    skip_git = False
     if "--prompt" in sys.argv:
         idx = sys.argv.index("--prompt")
         prompt_name = sys.argv[idx + 1]
     if "--alert" in sys.argv:
         run_alert = True
+    if "--no-git" in sys.argv:
+        skip_git = True
 
     print(f"\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 开始自动运行")
-    print(f"   模式: {'分析' if not run_alert else '预警'}")
+    print(f"   模式: {'预警' if run_alert else '分析'}")
+    if skip_git:
+        print(f"   Git: 跳过")
 
     # 预警模式：只查波动
     if run_alert:
@@ -142,13 +155,13 @@ def main():
         print("❌ 行情获取失败，终止")
         sys.exit(1)
 
-    report = run_analysis(prompt_name)
+    report = run_analysis(prompt_name, skip_git=skip_git)
     if report:
         print(f"\n✅ 自动运行完成 — {datetime.now().strftime('%H:%M:%S')}")
     else:
         print("\n⚠️ 行情已更新，但分析失败")
 
-    print(f"📊 历史记录: {PROJECT_ROOT / 'finance' / 'history.csv'}")
+    print(f"📊 历史记录: {HISTORY_FILE}")
 
 
 if __name__ == "__main__":
