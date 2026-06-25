@@ -1,7 +1,7 @@
 # AI 财务助手 — Claude Code 项目
 
-> 用 Claude Code 做交互层 + DeepSeek API 做分析 + Python 脚本获取市场数据
-> 最后更新：2026-06-25
+> Claude Code 做交互层 + DeepSeek API 做分析 + akshare 获取市场数据
+> 最后更新：2026-06-26
 
 ---
 
@@ -9,12 +9,13 @@
 
 ```
 AI_Financial_Assistant/
-├── CLAUDE.md                   # ← 此文件，项目架构说明
+├── CLAUDE.md                   # ← 此文件，新会话上下文
 ├── REQUIREMENTS.md             # 功能需求清单
+├── GEMINI_PROMPT.md            # 发给外部 AI 的项目总结
 ├── PRIVATE.md                  # 🔒 真实财务数据（gitignore）
 ├── .env                        # 🔒 API Key（gitignore）
 ├── .gitignore
-├── finance/                    # 财务数据（可手动编辑）
+├── finance/                    # 财务数据（手动编辑 + 自动生成）
 │   ├── assets.md               #   资产明细
 │   ├── income.md               #   营收现金流
 │   ├── insurance.md            #   保单
@@ -23,9 +24,11 @@ AI_Financial_Assistant/
 │   ├── portfolio_snapshot.md   #   [自动生成] 市值快照
 │   └── analysis_*.md           #   [自动生成] 分析报告
 ├── scripts/                    # 可执行脚本
-│   ├── market_data.py          #   拉取 A 股 ETF/基金行情
-│   ├── deepseek_analysis.py    #   调用 DeepSeek API 分析
-│   └── requirements.txt        #   Python 依赖
+│   ├── market_data.py          #   拉取 A 股 ETF/个股/基金行情
+│   ├── deepseek_analysis.py    #   DeepSeek API 分析 + 推送
+│   ├── wecom_push.py           #   企业微信机器人推送（多段拆分）
+│   ├── wechat_push.py          #   Server酱推送（兜底）
+│   └── requirements.txt
 └── prompts/                    # 可复用的分析提示词
     ├── monthly_review.md       #   月度体检
     ├── portfolio_rebalance.md  #   再平衡分析
@@ -37,61 +40,66 @@ AI_Financial_Assistant/
 
 ## 工作流
 
-### 日常使用（在 Claude Code 中）
+### 在 Claude Code 中（自然语言）
 
-直接对我说：
-- "更新市场数据并做月度体检" → 我会依次运行 `market_data.py` + `deepseek_analysis.py --prompt monthly_review`
-- "分析我的资产配置是否合理" → 我会读取你的 finance/*.md 并给出建议
-- "昨天 A 股大跌，我的持仓受影响多少" → 先跑行情脚本，再做事件分析
-- "我的保险够不够" → 读取保单 + 目标，做保障缺口分析
+| 你说 | 发生什么 |
+|------|------|
+| "做月度体检" | 行情 + 全部财务数据 → DeepSeek 分析 → 企微推完整报告 |
+| "我的资产配置合理吗 / 要不要调仓" | 再平衡分析 → 企微推送 |
+| "我的保险够不够" | 保障审计 → 企微推送 |
+| "A 股大跌，影响多少" | 行情 → 事件分析 → 企微推送 |
+| "更新行情" | 仅拉取实时价，更新快照 |
 
 ### 手工运行
 
 ```bash
-# 1. 拉取最新行情
+conda activate deepseek_v4_api
+
+# 行情
 python scripts/market_data.py
 
-# 2. 月度体检
+# 分析（会自动推企微，企微失败则走 Server酱）
 python scripts/deepseek_analysis.py --prompt prompts/monthly_review.md
-
-# 3. 再平衡分析
 python scripts/deepseek_analysis.py --prompt prompts/portfolio_rebalance.md
-
-# 4. 保障审计
 python scripts/deepseek_analysis.py --prompt prompts/insurance_audit.md
+python scripts/deepseek_analysis.py --prompt prompts/market_event.md
 ```
 
 ---
 
-## 环境要求
+## 环境
 
-- **Python** 环境：使用 `deepseek_v4_api` conda 环境
-- **API Key**：DeepSeek API Key 写入 `.env` 文件
-- **akshare**：用于获取 A 股/基金行情（免费、无需 API Key）
+- **Python**：`deepseek_v4_api` conda 环境
+- **行情**：akshare（免费，无需 API Key），ETF/eastmoney + A 股/Sina 双源
+- **分析**：DeepSeek API（`deepseek-chat`）
+- **推送**：企业微信机器人（主）+ Server酱（备）
+- **代理**：脚本启动时清除 `HTTP_PROXY`，eastmoney 被代理拦截时自动切 Sina
 
-首次使用：
-```bash
-conda activate deepseek_v4_api
-pip install -r scripts/requirements.txt
-```
+---
+
+## 已知问题
+
+1. **Git Bash 终端乱码**：UTF-8 中文在 GBK 终端显示乱码，文件写入正常 — 设 `PYTHONIOENCODING=utf-8`
+2. **A 股 eastmoney 被代理拦截**：127.0.0.1:19395 代理拦截 push2.eastmoney.com，已用 Sina fallback
+3. **DeepSeek API 需 120s 超时**：默认太短
+4. **企微 Markdown 限制 4096 字节**（~1300 中文字）：报告拆多段发送
 
 ---
 
 ## 数据隐私
 
-- `finance/*.md` → 模板为脱敏数据。真实数据请自行替换
-- `PRIVATE.md` → 真实个人信息，已在 `.gitignore` 排除
-- `.env` → API Key，已在 `.gitignore` 排除
-- 分析时，数据会发送至 DeepSeek API（云端推理）
-- **不建议将真实财务数据提交到公开仓库**
+- `finance/*.md` → 当前为 John Doe 虚构演示数据
+- `PRIVATE.md` → 🔒 真实个人信息（gitignore）
+- `.env` → 🔒 API Key + Webhook Key（gitignore）
+- 分析时数据发送至 DeepSeek API（云端推理）
 
 ---
 
 ## 当前状态
 
-- ✅ 模板数据填充完毕
-- ✅ 行情获取脚本就绪
-- ✅ DeepSeek 分析脚本就绪
-- ✅ 分析提示词就绪
+- ✅ A 股 ETF/个股/基金行情全支持
+- ✅ 4 类 DeepSeek 分析全链路验证
+- ✅ 企微多段推送 + Server酱兜底
+- ✅ John Doe 演示数据 + 4 份 demo 报告
 - ⬜ 待填入真实数据
-- ⬜ 待首次运行验证
+- ⬜ 待加定时/自动功能
