@@ -26,6 +26,9 @@ Thumbs.db
 # Log files
 *.log
 
+# Tunnel URL (changes each session)
+.tunnel_url
+
 # Generated reports (optional — 取消注释以排除)
 # finance/analysis_*.md
 # finance/portfolio_snapshot.md
