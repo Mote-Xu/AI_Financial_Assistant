@@ -226,12 +226,23 @@ def _extract_summary_from_report(file_path: str, max_lines: int = 15) -> str:
         return "报告已生成，详情请下载附件查看"
 
 
+def _clean_for_wecom(text: str) -> str:
+    """清理 Markdown 以适配企微显示（企微不支持表格等复杂格式）"""
+    # 替换表格竖线（避免被解析）
+    text = text.replace("|", "│")
+    # 去掉过多空行
+    import re
+    text = re.sub(r"\n{4,}", "\n\n\n", text)
+    return text.strip()
+
+
 def push_analysis(analysis_file: str, prompt_name: str = "",
-                  send_file: bool = True) -> bool:
+                  send_file: bool = False) -> bool:
     """
-    推送分析报告到企微：
-    1. 文件直发 — 手机直接下载打开，无需 GitHub 登录（主要方式）
-    2. 文本摘要 — 关键数据预览 + GitHub 链接备份
+    推送分析报告全文到企微 — 直接在手机企微里阅读，无需下载文件
+
+    超长内容自动分块发送，每块不超过 4096 字节
+    最后一条附 GitHub 备份链接
     """
     from datetime import datetime
 
@@ -246,27 +257,57 @@ def push_analysis(analysis_file: str, prompt_name: str = "",
     label = prompt_labels.get(prompt_name, prompt_name)
     now = datetime.now().strftime("%m/%d %H:%M")
 
-    success = True
+    # 读取报告
+    try:
+        with open(analysis_file, "r", encoding="utf-8") as f:
+            raw = f.read()
+    except Exception:
+        return push_wecom(f"## 📊 {label} {now}\n\n报告生成完成，请稍后查看")
 
-    # 1. 文件直发（主要方式，手机直接打开）
-    if send_file:
-        import time
-        file_ok = push_file(analysis_file)
-        if file_ok:
-            # 短暂延迟，确保文件消息先到达
-            time.sleep(0.5)
-        success = file_ok or success
+    # 清理格式
+    text = _clean_for_wecom(raw)
 
-    # 2. 文本摘要 + GitHub 链接备份
-    summary = _extract_summary_from_report(analysis_file)
-    msg = f"## 📊 {label} {now}\n\n"
-    msg += f"📎 报告文件已发送，点击上方附件下载查看\n\n"
-    msg += f"### 内容预览\n{summary}\n\n"
-    msg += f"---\n"
-    msg += f"💾 [👉 GitHub 备份链接]({github_url})\n"
-    msg += f"> 文件直发无网络限制 | GitHub 需登录"
+    # 分块（每块 ~3500 字节，留余量给分块标记）
+    MAX_BYTES = 3500
+    body_bytes = text.encode("utf-8")
+    total_bytes = len(body_bytes)
 
-    text_ok = push_wecom(msg)
-    success = text_ok or success
+    if total_bytes <= MAX_BYTES:
+        # 单条，直接发
+        msg = f"## 📊 {label} {now}\n\n{text}\n\n---\n💾 [GitHub 备份]({github_url})"
+        return push_wecom(msg)
 
-    return success
+    # 多条分块
+    chunks = []
+    pos = 0
+    while pos < total_bytes:
+        end = min(pos + MAX_BYTES, total_bytes)
+        chunk_bytes = body_bytes[pos:end]
+        chunk_text = chunk_bytes.decode("utf-8", errors="ignore")
+        # 回退到最后一个完整行
+        if end < total_bytes:
+            last_nl = chunk_text.rfind("\n")
+            if last_nl > len(chunk_text) // 2:
+                chunk_text = chunk_text[:last_nl]
+                end = pos + len(chunk_text.encode("utf-8"))
+        chunks.append(chunk_text.strip())
+        pos = end
+
+    total = len(chunks)
+    import time
+    ok_count = 0
+    for i, chunk in enumerate(chunks):
+        header = f"## 📊 {label} ({i + 1}/{total}) | {now}\n\n"
+        footer = ""
+        if i == total - 1:
+            footer = f"\n\n---\n💾 [GitHub 备份链接]({github_url})"
+        msg = header + chunk + footer
+        if push_wecom(msg):
+            ok_count += 1
+        else:
+            print(f"  ⚠️ 第 {i + 1}/{total} 块推送失败")
+        if i < total - 1:
+            time.sleep(0.5)  # 避免限流
+
+    print(f"📱 企微报告推送: {ok_count}/{total} 块成功")
+    return ok_count == total
