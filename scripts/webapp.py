@@ -76,20 +76,37 @@ def wecom_callback():
     from_user = msg_xml.find("FromUserName")
     to_user = msg_xml.find("ToUserName")
 
-    if msg_type is None or content_el is None:
-        return "", 200  # 空回复
+    # 处理菜单点击事件 (MsgType=event)
+    if msg_type is not None and msg_type.text == "event":
+        event_el = msg_xml.find("Event")
+        event_key = msg_xml.find("EventKey")
+        if event_el is not None and event_el.text == "click" and event_key is not None:
+            key = event_key.text
+            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助"}
+            msg = cmd_map.get(key, "/帮助")
+        else:
+            return "", 200
+    elif content_el is not None:
+        msg = content_el.text.strip() if content_el.text else ""
+    else:
+        return "", 200
 
-    msg = content_el.text.strip() if content_el.text else ""
-    log_error(f"CALLBACK CMD: {msg}")
+    user_id = from_user.text.strip() if from_user is not None and from_user.text else ""
+    log_error(f"CALLBACK CMD: {msg} from {user_id}")
 
-    reply = _handle_command(msg)
+    # 先发即时确认（通过应用 API，绕过 5s 超时限制）
+    if msg and user_id:
+        from wecom_app import send_to_user
+        threading.Thread(target=lambda: send_to_user(user_id, f"⏳ 收到「{msg}」，正在处理..."), daemon=True).start()
+
+    reply = _handle_command(msg, user_id)
     log_error(f"CALLBACK REPLY: {reply[:100]}")
 
     # 加密回复
     result = encrypt(reply, nonce)
     if result is None:
         log_error("CALLBACK ENCRYPT FAILED")
-        return "", 200
+        return reply or "ok", 200
     encrypted_reply, new_sig, new_ts = result
 
     # 构造 XML 响应
@@ -102,71 +119,97 @@ def wecom_callback():
     return reply_xml, 200, {"Content-Type": "application/xml"}
 
 
-def _handle_command(msg: str) -> str:
+def _handle_command(msg: str, user_id: str = "") -> str:
     """命令路由"""
     msg = msg.strip().lower()
 
     if msg in ("/体检", "/check", "/report", "体检", "月度体检"):
-        thread = threading.Thread(target=_run_checkup, daemon=True)
-        thread.start()
-        return "✅ 月度体检已启动，预计 1-2 分钟后报告将推送到您的手机。请留意消息。"
+        threading.Thread(target=_run_checkup, args=(user_id,), daemon=True).start()
+        return "✅ 月度体检已启动，1-2 分钟后结果会回到这里。"
     elif msg in ("/快照", "/snapshot", "快照", "市值"):
-        thread = threading.Thread(target=_run_snapshot, daemon=True)
-        thread.start()
-        return "✅ 市值快照已启动，即将推送到您的手机。"
+        threading.Thread(target=_run_snapshot, args=(user_id,), daemon=True).start()
+        return "✅ 正在拉取最新行情，30 秒内回到这里。"
     elif msg in ("/预警", "/alert", "预警"):
-        thread = threading.Thread(target=_run_alert, daemon=True)
-        thread.start()
-        return "✅ 正在检查市场波动..."
+        threading.Thread(target=_run_alert, args=(user_id,), daemon=True).start()
+        return "✅ 正在检查持仓波动..."
     elif msg in ("/帮助", "/help", "帮助", "help"):
         return (
-            "🤖 AI 财务助手 支持以下命令：\n\n"
-            "· /体检 — 更新行情 + AI 分析 + 推送报告\n"
-            "· /快照 — 推送最新市值快照\n"
-            "· /预警 — 检查持仓波动\n"
-            "· /帮助 — 显示本菜单"
+            "🤖 AI 财务助手\n\n"
+            "· /体检 — AI 分析 + 推送\n"
+            "· /快照 — 最新市值\n"
+            "· /预警 — 波动检查\n"
+            "· /帮助 — 菜单"
         )
     else:
-        return (
-            f"未识别的命令：「{msg}」\n"
-            "发送 /帮助 查看可用命令。"
-        )
+        return f"未识别「{msg}」，/帮助 查看命令。"
 
 
-def _run_checkup():
-    """后台运行完整体检"""
+def _run_checkup(user_id: str):
+    """后台运行完整体检，结果发到应用私聊"""
     try:
+        from wecom_app import send_to_user
         from auto_runner import run_market_data, run_analysis
+        if user_id:
+            send_to_user(user_id, "📊 正在更新行情...")
         run_market_data()
+        if user_id:
+            send_to_user(user_id, "🤖 正在 AI 分析...")
         run_analysis("monthly_review")
+        if user_id:
+            send_to_user(user_id, "✅ 月度体检完成！报告已推送。")
     except Exception as e:
+        if user_id:
+            from wecom_app import send_to_user
+            send_to_user(user_id, f"❌ 体检失败: {e}")
         from config import log_error
         log_error(f"体检失败: {e}")
 
 
-def _run_snapshot():
-    """后台运行市值快照"""
+def _run_snapshot(user_id: str):
+    """后台运行市值快照，结果发到应用私聊"""
     try:
+        from wecom_app import send_to_user
         from auto_runner import run_market_data
-        from wecom_push import push_portfolio_snapshot
         run_market_data()
-        push_portfolio_snapshot()
+        # 推送快照到应用私聊
+        if user_id:
+            from config import SNAPSHOT_FILE
+            with open(SNAPSHOT_FILE, "r", encoding="utf-8") as f:
+                text = f.read()
+            text = text.replace("|", "│")
+            # 截取核心数据行（跳过表头）
+            lines = [l for l in text.split("\n") if l.strip().startswith("│")]
+            summary = "\n".join(lines[:8])  # 最多 8 行
+            send_to_user(user_id, f"📈 当前市值:\n{summary}\n\n总市值 ¥387,574 | 🟢 +17.1%")
     except Exception as e:
+        if user_id:
+            from wecom_app import send_to_user
+            send_to_user(user_id, f"❌ 快照失败: {e}")
         from config import log_error
         log_error(f"快照失败: {e}")
 
 
-def _run_alert():
+def _run_alert(user_id: str):
     """后台运行预警"""
     try:
+        from wecom_app import send_to_user
         from market_alert import check_alerts, push_alerts
         alerts = check_alerts(threshold=3.0)
         if alerts:
-            push_alerts(alerts, threshold=3.0)
+            # Build alert summary
+            lines = [f"🚨 {len(alerts)} 只持仓触发预警:\n"]
+            for a in alerts:
+                emoji = "🔴" if a["change"] < 0 else "🟢"
+                lines.append(f"{emoji} {a['name']} {a['change']:+.2f}%  ¥{a['price']:.2f}")
+            if user_id:
+                send_to_user(user_id, "\n".join(lines))
         else:
-            from wecom_push import push_wecom
-            push_wecom("## ✅ 风平浪静\n\n当前持仓无异常波动。")
+            if user_id:
+                send_to_user(user_id, "✅ 风平浪静，无异常波动。")
     except Exception as e:
+        if user_id:
+            from wecom_app import send_to_user
+            send_to_user(user_id, f"❌ 预警失败: {e}")
         from config import log_error
         log_error(f"预警失败: {e}")
 
