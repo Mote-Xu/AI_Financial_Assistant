@@ -217,7 +217,71 @@ def generate_summary(holdings: dict, security_prices: dict, fund_navs: dict) -> 
                   f"**总盈亏**: {'🟢' if total_pnl>=0 else '🔴'} ¥{total_pnl:,.0f} "
                   f"({total_pnl_pct:+.1f}%)")
 
-    return "\n".join(lines)
+    return "\n".join(lines), total_value, total_cost, total_pnl, total_pnl_pct
+
+
+def save_history(holdings: dict, security_prices: dict, fund_navs: dict,
+                 total_value: float, total_cost: float, total_pnl: float):
+    """追加一条历史记录到 CSV"""
+    import csv
+    history_file = FINANCE_DIR / "history.csv"
+    file_exists = history_file.exists()
+
+    # 分类汇总
+    stock_etf_value = sum(
+        security_prices.get(s["code"], {}).get("price", 0) * s["shares"]
+        for s in holdings["stocks"]
+    )
+    fund_value = sum(
+        fund_navs.get(f["code"], {}).get("nav", 0) * f["shares"]
+        for f in holdings["funds"]
+    )
+
+    # 读取现金和房产（从 assets.md 的手动写死的小计算）
+    # 这些需要从 generate_summary 外部获取，暂时用文件解析
+    try:
+        with open(FINANCE_DIR / "assets.md", "r", encoding="utf-8") as f:
+            amd = f.read()
+    except Exception:
+        amd = ""
+
+    import re as _re
+    cash = 0
+    re_estate = 0
+    for line in amd.split("\n"):
+        cm = _re.match(r"\|.+?\|\s*([\d,]+)\s*\|", line)
+        # 简化：取「现金合计」后面的数字
+        if "现金合计" in line:
+            cm2 = _re.search(r"¥([\d,]+)", line)
+            if cm2:
+                cash = float(cm2.group(1).replace(",", ""))
+        if "房产净权益" in line:
+            cm2 = _re.search(r"([\d,]+)", line.split("|")[-2] if "|" in line else line)
+    # Fallback: 固定读取
+    try:
+        with open(FINANCE_DIR / "income.md", "r", encoding="utf-8") as f:
+            imd = f.read()
+    except Exception:
+        imd = ""
+
+    row = {
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "cash": cash,
+        "stock_etf": round(stock_etf_value, 2),
+        "fund": round(fund_value, 2),
+        "total_investment": round(stock_etf_value + fund_value, 2),
+        "total_cost": round(total_cost, 2),
+        "total_pnl": round(total_pnl, 2),
+        "pnl_pct": round((total_pnl / total_cost * 100) if total_cost > 0 else 0, 2),
+    }
+
+    with open(history_file, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=row.keys())
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(row)
+
+    print(f"📊 历史记录已追加: {history_file} (共 {sum(1 for _ in open(history_file)) - 1} 条)")
 
 
 def main():
@@ -242,13 +306,18 @@ def main():
     if holdings["funds"]:
         fund_navs = fetch_fund_nav([f["code"] for f in holdings["funds"]])
 
-    summary = generate_summary(holdings, security_prices, fund_navs)
+    summary, total_value, total_cost, total_pnl, total_pnl_pct = generate_summary(
+        holdings, security_prices, fund_navs
+    )
     print(summary)
 
     output_file = FINANCE_DIR / "portfolio_snapshot.md"
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(summary)
     print(f"\n📁 汇总已保存到: {output_file}")
+
+    # 追加历史记录
+    save_history(holdings, security_prices, fund_navs, total_value, total_cost, total_pnl)
 
     return holdings, security_prices, fund_navs
 
