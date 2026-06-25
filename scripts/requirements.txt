@@ -1,0 +1,7 @@
+# AI 财务助手 — Python 依赖
+# 安装: pip install -r scripts/requirements.txt
+
+akshare>=1.14.0        # A股/基金行情数据（免费）
+openai>=1.30.0         # DeepSeek API 兼容 OpenAI SDK
+pandas>=2.0.0           # 数据处理
+python-dotenv>=1.0.0    # .env 环境变量

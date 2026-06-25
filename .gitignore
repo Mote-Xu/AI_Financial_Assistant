@@ -1,0 +1,20 @@
+# Private data
+PRIVATE.md
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated reports (optional — 取消注释以排除)
+# finance/analysis_*.md
+# finance/portfolio_snapshot.md
