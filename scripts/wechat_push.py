@@ -92,18 +92,53 @@ def push_portfolio_snapshot(snapshot_file: str = None) -> bool:
     )
 
 
+def _clean_for_wechat(text: str) -> str:
+    """清理 Markdown 格式以适应微信显示"""
+    text = text.replace("|", "│")
+    import re
+    text = re.sub(r"\n{4,}", "\n\n\n", text)
+    return text.strip()
+
+
 def push_analysis_summary(analysis_file: str, prompt_name: str = "") -> bool:
-    """推送 GitHub 链接到 Server酱微信"""
+    """
+    推送分析报告全文到微信（Server酱）
+    微信端直接点击消息卡片即可阅读完整报告，无需下载文件
+    超长内容自动截断 + GitHub 链接备份
+    """
     from datetime import datetime
     fname = Path(analysis_file).name
     dir_name = get_finance_dir_name()
     github_url = f"https://github.com/Mote-Xu/AI_Financial_Assistant/blob/main/{dir_name}/{fname}"
     now = datetime.now().strftime("%m/%d %H:%M")
 
+    prompt_labels = {
+        "monthly_review": "月度体检", "portfolio_rebalance": "再平衡",
+        "insurance_audit": "保障审计", "market_event": "市场应急"
+    }
+    label = prompt_labels.get(prompt_name, prompt_name)
+
+    # 读取报告全文
+    try:
+        with open(analysis_file, "r", encoding="utf-8") as f:
+            raw = f.read()
+    except Exception:
+        return push_wechat(f"📊 {label} {now}", "报告已生成，请稍后查看")
+
+    # 清理格式 + 截断（Server酱建议不超过 30KB）
+    content = _clean_for_wechat(raw)
+    max_bytes = 28000
+    content_bytes = content.encode("utf-8")
+    if len(content_bytes) > max_bytes:
+        content = content_bytes[:max_bytes - 200].decode("utf-8", errors="ignore")
+        content += f"\n\n...\n> ⚠️ 内容过长已截断\n> 👉 [查看完整报告]({github_url})"
+
+    title = f"📊 {label}—{now}"
+
     return push_wechat(
-        title=f"📊 财务分析 [{prompt_name}] {now}",
-        content=f"👉 [点击查看完整报告]({github_url})\n\n> 提示：报告已自动推送到 GitHub",
-        short=f"报告已生成 {now}",
+        title=title,
+        content=content,
+        short=f"财务报告已生成 {now}",
     )
 
 

@@ -101,24 +101,20 @@ def run_analysis(prompt_name: str = "monthly_review", skip_git: bool = False):
         except Exception as e:
             print(f"⚠️ GitHub 备份失败（非致命，文件直发不受影响）: {e}")
 
-    # 企微推送（文件直发 + 文本摘要）
-    pushed = False
+    # 双通道推送（企微 + 微信各自发完整报告）
     try:
         from wecom_push import push_analysis
-        pushed = push_analysis(str(output_path), prompt_name=prompt_name)
-        if pushed:
-            print("📱 企微文件直发 + 摘要推送完成")
+        push_analysis(str(output_path), prompt_name=prompt_name)
+        print("📱 企微推送完成")
     except Exception as e:
         print(f"⚠️ 企微推送失败: {e}")
 
-    # Server酱兜底
-    if not pushed:
-        try:
-            from wechat_push import push_analysis_summary
-            push_analysis_summary(str(output_path), prompt_name=prompt_name)
-            print("📱 Server酱兜底推送完成")
-        except Exception as e:
-            print(f"⚠️ Server酱推送也失败: {e}")
+    try:
+        from wechat_push import push_analysis_summary
+        push_analysis_summary(str(output_path), prompt_name=prompt_name)
+        print("📱 微信推送完成")
+    except Exception as e:
+        print(f"⚠️ 微信推送失败: {e}")
 
     return output_path
 

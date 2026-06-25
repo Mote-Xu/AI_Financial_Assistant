@@ -210,26 +210,22 @@ def main():
         except Exception as e:
             print(f"⚠️ 自动推送 GitHub 失败: {e}")
 
-    # 推送（企微文件直发 → Server酱兜底）
+    # 双通道推送（企微 + 微信各自发完整报告）
     if not args.no_push:
         prompt_stem = Path(args.prompt).stem
-        pushed = False
         try:
             from wecom_push import push_analysis
-            pushed = push_analysis(str(output_path), prompt_name=prompt_stem)
-            if pushed:
-                print("📱 企微文件直发完成")
-                return
+            push_analysis(str(output_path), prompt_name=prompt_stem)
+            print("📱 企微推送完成")
         except Exception as e:
             print(f"⚠️ 企微推送失败: {e}")
 
-        # Server酱兜底
         try:
             from wechat_push import push_analysis_summary
             push_analysis_summary(str(output_path), prompt_name=prompt_stem)
-            print("📱 Server酱兜底推送完成")
+            print("📱 微信推送完成")
         except Exception as e:
-            print(f"⚠️ 推送跳过: {e}")
+            print(f"⚠️ 微信推送失败: {e}")
     else:
         print("🔇 跳过推送（--no-push）")
 
