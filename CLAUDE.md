@@ -35,7 +35,8 @@ AI_Financial_Assistant/
 │   ├── db_query.py             # 数据库查询工具
 │   ├── wecom_push.py           # 企微推送（文本+文件直发+图片）
 │   ├── wechat_push.py          # Server酱推送（兜底）
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── webapp.py                # Flask Dashboard + 企微回调端点
 └── prompts/
     ├── monthly_review.md       # 月度体检
     ├── portfolio_rebalance.md  # 再平衡
@@ -56,7 +57,7 @@ AI_Financial_Assistant/
 | "保险够不够" | `deepseek_analysis.py --prompt insurance_audit` |
 | "大跌影响" | `deepseek_analysis.py --prompt market_event` |
 | "更新行情" | `market_data.py` |
-| "跑个预警" | `market_alert.py --threshold 3.0` |
+| "启动面板" | `python scripts/webapp.py` → http://localhost:5000 |
 
 ### CLI
 
@@ -71,6 +72,8 @@ python scripts/db_query.py --holding 600519      # 单只详情
 python scripts/market_alert.py --threshold 3.0   # 波动预警
 python scripts/auto_runner.py                    # 全自动
 python scripts/auto_runner.py --alert            # 仅预警
+python scripts/webapp.py                         # Flask Dashboard (dev)
+python scripts/webapp.py --prod                  # Flask Dashboard (生产)
 ```
 
 ---
