@@ -89,6 +89,18 @@ def run_analysis(prompt_name: str = "monthly_review"):
 
     print(f"📁 报告已保存: {output_path}")
 
+    # 自动推 GitHub
+    import subprocess
+    try:
+        rel = output_path.relative_to(PROJECT_ROOT)
+        subprocess.run(["git", "add", str(rel)], cwd=PROJECT_ROOT, capture_output=True)
+        subprocess.run(["git", "commit", "-m", f"Auto: {prompt_name} {output_path.stem}"],
+                       cwd=PROJECT_ROOT, capture_output=True)
+        subprocess.run(["git", "push"], cwd=PROJECT_ROOT, capture_output=True)
+        print("📤 报告已推送到 GitHub")
+    except Exception as e:
+        print(f"⚠️ GitHub 推送失败: {e}")
+
     # 推送
     try:
         from wecom_push import push_analysis

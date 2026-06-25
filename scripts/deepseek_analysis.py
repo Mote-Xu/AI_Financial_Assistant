@@ -143,6 +143,10 @@ def main():
                         help="输出文件路径（可选）")
     parser.add_argument("--no-snapshot", action="store_true",
                         help="不包含市值快照")
+    parser.add_argument("--no-push", action="store_true",
+                        help="不推送企微")
+    parser.add_argument("--auto-commit", action="store_true",
+                        help="自动 git commit + push 报告到 GitHub")
     args = parser.parse_args()
 
     print("=" * 50)
@@ -189,20 +193,39 @@ def main():
     except Exception:
         pass
 
-    # 推送（企微优先 → Server酱兜底）
-    prompt_stem = Path(args.prompt).stem
-    try:
-        from wecom_push import push_analysis
-        if push_analysis(str(output_path), prompt_name=prompt_stem):
-            return
-    except Exception:
-        pass
+    # 自动 git commit + push（报告链接需要文件已在 GitHub 上）
+    if args.auto_commit:
+        import subprocess
+        rel_path = output_path.relative_to(PROJECT_ROOT)
+        try:
+            subprocess.run(["git", "add", str(rel_path)], cwd=PROJECT_ROOT, check=True,
+                           capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"Auto: {Path(args.prompt).stem} analysis {output_path.stem}"],
+                cwd=PROJECT_ROOT, check=True, capture_output=True,
+            )
+            subprocess.run(["git", "push"], cwd=PROJECT_ROOT, check=True, capture_output=True)
+            print(f"📤 报告已自动推送到 GitHub")
+        except Exception as e:
+            print(f"⚠️ 自动推送 GitHub 失败: {e}")
 
-    try:
-        from wechat_push import push_analysis_summary
-        push_analysis_summary(str(output_path), prompt_name=prompt_stem)
-    except Exception as e:
-        print(f"⚠️ 推送跳过: {e}")
+    # 推送（企微优先 → Server酱兜底）
+    if not args.no_push:
+        prompt_stem = Path(args.prompt).stem
+        try:
+            from wecom_push import push_analysis
+            if push_analysis(str(output_path), prompt_name=prompt_stem):
+                return
+        except Exception:
+            pass
+
+        try:
+            from wechat_push import push_analysis_summary
+            push_analysis_summary(str(output_path), prompt_name=prompt_stem)
+        except Exception as e:
+            print(f"⚠️ 推送跳过: {e}")
+    else:
+        print("🔇 跳过推送（--no-push）")
 
 
 if __name__ == "__main__":

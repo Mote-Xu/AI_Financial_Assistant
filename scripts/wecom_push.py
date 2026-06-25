@@ -76,19 +76,12 @@ def push_portfolio_snapshot(snapshot_file: str = None) -> bool:
 
 
 def push_analysis(analysis_file: str, prompt_name: str = "") -> bool:
-    """推送完整分析报告到企微——拆成多条消息，手机看完"""
-    import re
+    """推送报告链接到企微——手机点链接即可查看完整报告"""
     from datetime import datetime
 
-    try:
-        p = Path(analysis_file)
-        if not p.is_absolute():
-            p = Path(__file__).parent.parent / analysis_file
-        with open(p, "r", encoding="utf-8") as f:
-            text = f.read()
-    except FileNotFoundError:
-        print(f"  ⚠️ 文件不存在: {analysis_file}")
-        return False
+    # 构建 GitHub 链接（repo 需设为 private 以保护隐私）
+    fname = Path(analysis_file).name
+    github_url = f"https://github.com/Mote-Xu/AI_Financial_Assistant/blob/main/finance/{fname}"
 
     prompt_labels = {
         "monthly_review": "月度体检", "portfolio_rebalance": "再平衡",
@@ -96,6 +89,12 @@ def push_analysis(analysis_file: str, prompt_name: str = "") -> bool:
     }
     label = prompt_labels.get(prompt_name, prompt_name)
     now = datetime.now().strftime("%m/%d %H:%M")
+
+    msg = f"## 📊 {label} {now}\n\n"
+    msg += f"[👉 点击查看完整报告]({github_url})\n\n"
+    msg += f"> 提示：报告已自动推送到 GitHub，随时可查看"
+
+    return push_wecom(msg)
 
     # 清理 Markdown 格式 → 纯文本（企微不支持表格等复杂格式）
     text = re.sub(r"\|", "│", text)      # 表格竖线替换

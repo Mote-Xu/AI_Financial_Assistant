@@ -91,44 +91,16 @@ def push_portfolio_snapshot(snapshot_file: str = None) -> bool:
 
 
 def push_analysis_summary(analysis_file: str, prompt_name: str = "") -> bool:
-    """推送分析报告摘要到微信（提取关键信息，避免超长截断）"""
-    import re
+    """推送 GitHub 链接到 Server酱微信"""
     from datetime import datetime
-
-    try:
-        with open(analysis_file, "r", encoding="utf-8") as f:
-            content = f.read()
-    except FileNotFoundError:
-        return push_wechat("📊 分析报告", "报告生成失败")
-
-    # 提取摘要：资产、现金流、Top 3 行动
-    summary_parts = []
-
-    # 提取"一句话总结"
-    m = re.search(r"\*\*一句话总结\*\*[：:]\s*(.+?)(?:\n|$)", content)
-    if m:
-        summary_parts.append(f"📌 {m.group(1).strip()}")
-
-    # 提取行动清单
-    action_section = re.search(r"(?:### |## )\s*6\.?\s*行动清单.*?\n(.+?)(?:\n---|\n## |\Z)", content, re.DOTALL)
-    if action_section:
-        actions = re.findall(r"\d+\.\s+\*\*(.+?)\*\*", action_section.group(1))
-        if actions:
-            summary_parts.append("\n🎯 本月行动：")
-            for a in actions[:3]:
-                summary_parts.append(f"  • {a}")
-
-    summary = "\n".join(summary_parts) if summary_parts else content[:400] + "..."
-
-    # 加文件路径提示
     fname = Path(analysis_file).name
-    summary += f"\n\n📁 完整报告: {fname}"
-
+    github_url = f"https://github.com/Mote-Xu/AI_Financial_Assistant/blob/main/finance/{fname}"
     now = datetime.now().strftime("%m/%d %H:%M")
+
     return push_wechat(
-        title=f"📊 [{prompt_name}] {now}",
-        content=summary,
-        short=f"财务分析已生成 {now}",
+        title=f"📊 财务分析 [{prompt_name}] {now}",
+        content=f"👉 [点击查看完整报告]({github_url})\n\n> 提示：报告已自动推送到 GitHub",
+        short=f"报告已生成 {now}",
     )
 
 

@@ -7,48 +7,62 @@
 
 ## 项目概况
 
-AI 财务助手是一个**个人理财分析系统**。三层架构：
+AI 财务助手 — 个人理财分析系统，三层架构：
 
 | 层 | 技术 |
 |------|------|
 | 交互 | Claude Code CLI（自然语言） |
-| 数据 | Markdown 静态文件 + akshare 实时行情 |
+| 数据 | Markdown 静态文件 + akshare 实时行情 + SQLite |
 | 分析 | DeepSeek API (`deepseek-chat`) |
 
-## 已验证功能
+GitHub: `github.com/Mote-Xu/AI_Financial_Assistant`（当前 public，demo 数据）
 
-- ✅ **A 股行情**：4 ETF + 2 个股 + 2 基金，eastmoney/Sina 双源
+## 已完成功能
+
+- ✅ **A 股行情**：ETF + 个股 + 基金，eastmoney/Sina 双源
 - ✅ **4 类分析**：月度体检 / 再平衡 / 保障审计 / 市场应急
-- ✅ **企微推送**：报告拆多段（4096 字节/条），手机完整可读
-- ✅ **Server酱兜底**：企微失败自动切
-- ✅ **历史追踪**：每跑行情追加 CSV，支持图表 (`history.py --plot`)
-- ✅ **定时自动**：`auto_runner.py` + `run_auto.bat`（Windows Task Scheduler）
-- ✅ **隐私**：`.env` 和 `PRIVATE.md` gitignore
+- ✅ **企微推送**：Webhook 多段拆分
+- ✅ **Server酱兜底**：普通微信推送
+- ✅ **历史净值追踪**：CSV + SQLite，支持 `history.py --plot` 图表
+- ✅ **定时自动**：`auto_runner.py` + 计划任务（Windows）→ Ubuntu cron（待部署）
+- ✅ **市场波动预警**：`market_alert.py`，持仓单日涨跌超阈值自动推企微
+- ✅ **SQLite 数据库**：holdings / prices / snapshots / analysis_log
 
-## 当前数据
+## 当前卡点：隐私 vs. 便利
 
-`finance/` 下为 **John Doe 虚构演示数据**（30 岁杭州互联网 P7，总资产 ~213 万）
+**问题**：想让手机微信点击链接就能看完整报告，当前方案是把报告 git push 到 GitHub，然后推送 GitHub 链接。
+
+**风险**：repo 是 public，报告含财务数据 → 隐私泄露。
+
+**候选方案**：
+| 方案 | 优点 | 缺点 |
+|------|------|------|
+| A. repo 设 Private | 最快，链接即用 | 仍需 GitHub 账号登录 |
+| B. push 到私有 Gist | 不暴露仓库 | Gist 管理麻烦 |
+| C. cloudflared tunnel 到本地 | 数据不出本地 | 需 Ubuntu 服务器 24/7 |
+| D. 放弃链接，推送摘要 | 零风险 | 手机看不完整 |
+
+**倾向**：repo 设 Private 最快。但长远看，等 Ubuntu 服务器就绪后用 cloudflared tunnel 把报告托管在本地是最优解。
+
+**想问**：这 4 个方案推荐哪个？有没有更好的第 5 种？
+
+---
 
 ## 技术栈
 
 - Python 3.12 / conda `deepseek_v4_api`
-- akshare、OpenAI SDK → DeepSeek、matplotlib
+- akshare、OpenAI SDK → DeepSeek、matplotlib、sqlite3
 - 企微 Webhook + Server酱
 - Claude Code CLI
-- Git: `github.com/Mote-Xu/AI_Financial_Assistant`
 
-## 下一步候选
+## 当前数据
 
-1. **市场波动预警**：持仓单日跌超 3% 自动推企微
-2. **FIRE 模拟器**：不同参数路径模拟
-3. **定投回测**：历史数据回测
-4. **SQLite 替代纯 MD**：结构化存储 + 复杂查询
-5. **Ubuntu cron 24/7 部署**（有老服务器待用）
+`finance/` 下为 John Doe 虚构演示数据。真实数据待填入。
 
-## 已知问题
+## 下一步候选（待 Gemini 建议优先级）
 
-- Git Bash 终端 UTF-8 乱码（文件写入正常）
-- A 股 eastmoney 被本地代理 127.0.0.1:19395 拦截，已用 Sina fallback
-- DeepSeek API 需 120s 超时
-- 企微 Markdown 限 4096 字节（~1300 中文字），需拆段
-- 财务数据上传 DeepSeek 云端推理（隐私权衡）
+- FIRE 模拟器
+- 定投回测
+- 企微双向互动（@机器人 → Flask 回调）
+- Ubuntu 24/7 部署
+- 本地模型替代 DeepSeek API（GPU: RTX 3050 4GB，不够）
