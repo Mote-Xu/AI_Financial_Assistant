@@ -58,8 +58,8 @@ def run_market_data():
     return output_file
 
 
-def run_analysis(prompt_name: str = "monthly_review", skip_git: bool = False):
-    """运行分析 + 推送（文件直发为主，GitHub 为备份）"""
+def run_analysis(prompt_name: str = "monthly_review"):
+    """运行分析 + 推送（企微 + 微信双通道，不经过 GitHub）"""
     from deepseek_analysis import load_file, build_context, call_deepseek
 
     prompt_file = f"prompts/{prompt_name}.md"
@@ -88,20 +88,7 @@ def run_analysis(prompt_name: str = "monthly_review", skip_git: bool = False):
 
     print(f"📁 报告已保存: {output_path}")
 
-    # Git 备份（可选，文件直发才是主要推送方式）
-    if not skip_git:
-        import subprocess
-        try:
-            rel = output_path.relative_to(PROJECT_ROOT)
-            subprocess.run(["git", "add", str(rel)], cwd=PROJECT_ROOT, capture_output=True)
-            subprocess.run(["git", "commit", "-m", f"Auto: {prompt_name} {output_path.stem}"],
-                           cwd=PROJECT_ROOT, capture_output=True)
-            subprocess.run(["git", "push"], cwd=PROJECT_ROOT, capture_output=True)
-            print("📤 GitHub 备份已推送")
-        except Exception as e:
-            print(f"⚠️ GitHub 备份失败（非致命，文件直发不受影响）: {e}")
-
-    # 双通道推送（企微 + 微信各自发完整报告）
+    # 双通道推送（企微 + 微信各自发完整报告，不经过 GitHub）
     try:
         from wecom_push import push_analysis
         push_analysis(str(output_path), prompt_name=prompt_name)
@@ -122,19 +109,14 @@ def run_analysis(prompt_name: str = "monthly_review", skip_git: bool = False):
 def main():
     prompt_name = "monthly_review"
     run_alert = False
-    skip_git = False
     if "--prompt" in sys.argv:
         idx = sys.argv.index("--prompt")
         prompt_name = sys.argv[idx + 1]
     if "--alert" in sys.argv:
         run_alert = True
-    if "--no-git" in sys.argv:
-        skip_git = True
 
     print(f"\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 开始自动运行")
     print(f"   模式: {'预警' if run_alert else '分析'}")
-    if skip_git:
-        print(f"   Git: 跳过")
 
     # 预警模式：只查波动
     if run_alert:
@@ -151,7 +133,7 @@ def main():
         print("❌ 行情获取失败，终止")
         sys.exit(1)
 
-    report = run_analysis(prompt_name, skip_git=skip_git)
+    report = run_analysis(prompt_name)
     if report:
         print(f"\n✅ 自动运行完成 — {datetime.now().strftime('%H:%M:%S')}")
     else:

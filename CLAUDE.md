@@ -51,7 +51,7 @@ AI_Financial_Assistant/
 
 | 你说 | 执行 |
 |------|------|
-| "做月度体检" | `auto_runner.py` → 行情+分析+GitHub推送+企微通知 |
+| "做月度体检" | `auto_runner.py` → 行情+分析+企微+微信推送 |
 | "要不要调仓" | `deepseek_analysis.py --prompt portfolio_rebalance` |
 | "保险够不够" | `deepseek_analysis.py --prompt insurance_audit` |
 | "大跌影响" | `deepseek_analysis.py --prompt market_event` |
@@ -80,7 +80,7 @@ python scripts/auto_runner.py --alert            # 仅预警
 - Python：`deepseek_v4_api` conda 或纯 pip
 - 行情：akshare（ETF/eastmoney + A股/Sina 双源）
 - 分析：DeepSeek API `deepseek-chat`（timeout=120s）
-- 推送：企微 Webhook（主：文本 + 文件直发 + 图片）+ Server酱（备）
+- 推送：企微 + 微信（双通道，发完整报告，不经过 GitHub）
 - 代理：启动时清 HTTP_PROXY，eastmoney 被拦自动切 Sina
 
 ---
@@ -98,7 +98,7 @@ python scripts/auto_runner.py --alert            # 仅预警
 - 当前数据为 John Doe 虚构演示
 - `PRIVATE.md` + `.env` + `finance_data.db` → gitignore
 - 分析时数据发送至 DeepSeek API
-- 报告通过企微文件直发（主力）+ GitHub Public Repo（备份，只含 demo 数据）
+- 报告通过企微和微信双通道直接推送，无需 GitHub
 - 代码与数据分离：`FINANCE_DATA_DIR` 环境变量切换 demo/真实数据目录
 
 ---

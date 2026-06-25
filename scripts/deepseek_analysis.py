@@ -145,9 +145,7 @@ def main():
     parser.add_argument("--no-snapshot", action="store_true",
                         help="不包含市值快照")
     parser.add_argument("--no-push", action="store_true",
-                        help="不推送企微")
-    parser.add_argument("--auto-commit", action="store_true",
-                        help="自动 git commit + push 报告到 GitHub")
+                        help="不推送企微和微信")
     args = parser.parse_args()
 
     print("=" * 50)
@@ -194,23 +192,7 @@ def main():
     except Exception:
         pass
 
-    # 自动 git commit + push（报告链接需要文件已在 GitHub 上）
-    if args.auto_commit:
-        import subprocess
-        rel_path = output_path.relative_to(PROJECT_ROOT)
-        try:
-            subprocess.run(["git", "add", str(rel_path)], cwd=PROJECT_ROOT, check=True,
-                           capture_output=True)
-            subprocess.run(
-                ["git", "commit", "-m", f"Auto: {Path(args.prompt).stem} analysis {output_path.stem}"],
-                cwd=PROJECT_ROOT, check=True, capture_output=True,
-            )
-            subprocess.run(["git", "push"], cwd=PROJECT_ROOT, check=True, capture_output=True)
-            print(f"📤 报告已自动推送到 GitHub")
-        except Exception as e:
-            print(f"⚠️ 自动推送 GitHub 失败: {e}")
-
-    # 双通道推送（企微 + 微信各自发完整报告）
+    # 双通道推送（企微 + 微信各自发完整报告，不经过 GitHub）
     if not args.no_push:
         prompt_stem = Path(args.prompt).stem
         try:

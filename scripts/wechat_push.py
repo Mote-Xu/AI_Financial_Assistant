@@ -9,7 +9,7 @@ import requests
 import os
 from pathlib import Path
 
-from config import SNAPSHOT_FILE, get_finance_dir_name
+from config import SNAPSHOT_FILE
 
 # Server酱 SendKey（从 .env 或环境变量读取）
 def _get_sendkey():
@@ -103,13 +103,10 @@ def _clean_for_wechat(text: str) -> str:
 def push_analysis_summary(analysis_file: str, prompt_name: str = "") -> bool:
     """
     推送分析报告全文到微信（Server酱）
-    微信端直接点击消息卡片即可阅读完整报告，无需下载文件
-    超长内容自动截断 + GitHub 链接备份
+    微信端直接点击消息卡片即可阅读完整报告
+    超长内容自动截断
     """
     from datetime import datetime
-    fname = Path(analysis_file).name
-    dir_name = get_finance_dir_name()
-    github_url = f"https://github.com/Mote-Xu/AI_Financial_Assistant/blob/main/{dir_name}/{fname}"
     now = datetime.now().strftime("%m/%d %H:%M")
 
     prompt_labels = {
@@ -130,8 +127,8 @@ def push_analysis_summary(analysis_file: str, prompt_name: str = "") -> bool:
     max_bytes = 28000
     content_bytes = content.encode("utf-8")
     if len(content_bytes) > max_bytes:
-        content = content_bytes[:max_bytes - 200].decode("utf-8", errors="ignore")
-        content += f"\n\n...\n> ⚠️ 内容过长已截断\n> 👉 [查看完整报告]({github_url})"
+        content = content_bytes[:max_bytes - 100].decode("utf-8", errors="ignore")
+        content += "\n\n...\n> 内容过长已截断"
 
     title = f"📊 {label}—{now}"
 

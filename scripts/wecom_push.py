@@ -16,7 +16,7 @@ import os
 import base64
 from pathlib import Path
 
-from config import SNAPSHOT_FILE, get_finance_dir_name
+from config import SNAPSHOT_FILE
 
 
 def _get_webhook():
@@ -239,16 +239,11 @@ def _clean_for_wecom(text: str) -> str:
 def push_analysis(analysis_file: str, prompt_name: str = "",
                   send_file: bool = False) -> bool:
     """
-    推送分析报告全文到企微 — 直接在手机企微里阅读，无需下载文件
+    推送分析报告全文到企微 — 直接在手机企微里阅读
 
     超长内容自动分块发送，每块不超过 4096 字节
-    最后一条附 GitHub 备份链接
     """
     from datetime import datetime
-
-    fname = Path(analysis_file).name
-    dir_name = get_finance_dir_name()
-    github_url = f"https://github.com/Mote-Xu/AI_Financial_Assistant/blob/main/{dir_name}/{fname}"
 
     prompt_labels = {
         "monthly_review": "月度体检", "portfolio_rebalance": "再平衡",
@@ -274,7 +269,7 @@ def push_analysis(analysis_file: str, prompt_name: str = "",
 
     if total_bytes <= MAX_BYTES:
         # 单条，直接发
-        msg = f"## 📊 {label} {now}\n\n{text}\n\n---\n💾 [GitHub 备份]({github_url})"
+        msg = f"## 📊 {label} {now}\n\n{text}"
         return push_wecom(msg)
 
     # 多条分块
@@ -298,10 +293,7 @@ def push_analysis(analysis_file: str, prompt_name: str = "",
     ok_count = 0
     for i, chunk in enumerate(chunks):
         header = f"## 📊 {label} ({i + 1}/{total}) | {now}\n\n"
-        footer = ""
-        if i == total - 1:
-            footer = f"\n\n---\n💾 [GitHub 备份链接]({github_url})"
-        msg = header + chunk + footer
+        msg = header + chunk
         if push_wecom(msg):
             ok_count += 1
         else:
