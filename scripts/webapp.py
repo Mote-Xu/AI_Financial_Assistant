@@ -1,7 +1,9 @@
 """
-Flask Web Dashboard + 手机控制台 — AI 财务助手
+Flask 回调服务 — AI 财务助手
+企微自建应用回调 + 轻量 Dashboard
+
 用法:
-    python scripts/webapp.py              # 开发模式 (debug=True)
+    python scripts/webapp.py              # 开发模式
     python scripts/webapp.py --prod       # 生产模式 (waitress, port=5000)
 """
 
@@ -9,6 +11,7 @@ import sys
 import os
 import threading
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -18,7 +21,7 @@ from config import (PROJECT_ROOT, FINANCE_DIR, SNAPSHOT_FILE,
                     HISTORY_FILE, DB_PATH, CHART_FILE, ensure_finance_dir)
 ensure_finance_dir()
 
-from flask import Flask, render_template, jsonify, request, send_file, redirect, url_for
+from flask import Flask, render_template, jsonify, request, send_file
 from datetime import datetime
 import json
 
@@ -26,129 +29,140 @@ app = Flask(__name__,
             template_folder=str(PROJECT_ROOT / "scripts" / "templates"))
 
 
-# ── Helpers ──────────────────────────────────────────────
+# ── WeCom 自建应用回调 ──────────────────────────────────
 
-def _parse_snapshot():
-    """解析 portfolio_snapshot.md 返回结构化数据"""
-    if not SNAPSHOT_FILE.exists():
-        return None
+@app.route("/callback/wecom", methods=["GET", "POST"])
+def wecom_callback():
+    """
+    企微自建应用回调端点
+    GET:  URL 验证 (echostr 解密)
+    POST: 接收消息 → 路由到命令处理
+    """
+    from wecom_crypto import decrypt, encrypt
 
-    with open(SNAPSHOT_FILE, "r", encoding="utf-8") as f:
-        text = f.read()
+    sig = request.args.get("msg_signature", "")
+    ts = request.args.get("timestamp", "")
+    nonce = request.args.get("nonce", "")
 
-    data = {
-        "holdings": [],
-        "total_value": 0,
-        "total_cost": 0,
-        "total_pnl": 0,
-        "total_pnl_pct": 0,
-        "updated": "",
-        "config": {"stock_pct": 0, "fund_pct": 0, "etf_pct": 0, "cash": 0},
-    }
+    if request.method == "GET":
+        # URL 验证
+        echostr = request.args.get("echostr", "")
+        plain = decrypt(echostr, sig, ts, nonce)
+        return plain or "verify failed", 200
 
-    for line in text.split("\n"):
-        line = line.strip()
-        if "更新时间" in line:
-            data["updated"] = line.split(":")[-1].strip()
-        if "总市值" in line:
-            # 总市值: ¥387,574 | 总成本: ¥331,100 | 总盈亏: 🟢 ¥56,474 (+17.1%)
-            import re
-            nums = re.findall(r"[\d,]+\.?\d*", line)
-            if len(nums) >= 1:
-                data["total_value"] = float(nums[0].replace(",", ""))
-            if len(nums) >= 2:
-                data["total_cost"] = float(nums[1].replace(",", ""))
-            if len(nums) >= 3:
-                data["total_pnl"] = float(nums[2].replace(",", ""))
-            pct_m = re.search(r"\(([+-]?[\d.]+)%\)", line)
-            if pct_m:
-                data["total_pnl_pct"] = float(pct_m.group(1))
+    # POST: 接收消息
+    body = request.data.decode("utf-8")
+    try:
+        xml = ET.fromstring(body)
+        encrypted = xml.find("Encrypt")
+        if encrypted is None:
+            return "bad request", 400
+        plain = decrypt(encrypted.text, sig, ts, nonce)
+        if plain is None:
+            return "decrypt failed", 403
+    except Exception:
+        return "parse error", 400
 
-    # 解析持仓表格行 (| 或 │ 分隔)
-    in_table = False
-    for line in text.split("\n"):
-        line = line.strip()
-        if "----" in line:
-            in_table = not in_table
-            continue
-        if in_table and line.startswith("|") and "代码" not in line:
-            # 统一用 | 处理
-            clean = line.replace("│", "|")
-            cols = [c.strip() for c in clean.split("|") if c.strip()]
-            if len(cols) >= 8:
-                try:
-                    data["holdings"].append({
-                        "type": cols[0],
-                        "code": cols[1],
-                        "name": cols[2],
-                        "shares": cols[3],
-                        "cost": cols[4],
-                        "price": cols[5],
-                        "value": cols[6],
-                        "pnl": cols[7],
-                    })
-                except (IndexError, ValueError):
-                    pass
+    # 解析消息内容
+    msg_xml = ET.fromstring(plain)
+    msg_type = msg_xml.find("MsgType")
+    content_el = msg_xml.find("Content")
+    from_user = msg_xml.find("FromUserName")
+    to_user = msg_xml.find("ToUserName")
 
-    # 计算配置占比
-    for h in data["holdings"]:
-        import re
-        val_str = re.sub(r"[^\d.]", "", h["value"].replace(",", ""))
-        try:
-            val = float(val_str)
-        except ValueError:
-            continue
-        t = h["type"].upper()
-        if "ETF" in t:
-            data["config"]["etf_pct"] += val
-        elif "基金" in t or "FUND" in t:
-            data["config"]["fund_pct"] += val
+    if msg_type is None or content_el is None:
+        return "", 200  # 空回复
+
+    msg = content_el.text.strip() if content_el.text else ""
+    reply = _handle_command(msg)
+
+    # 加密回复
+    encrypted_reply, new_sig, new_ts = encrypt(reply, nonce)
+
+    # 构造 XML 响应
+    reply_xml = f"""<xml>
+<Encrypt><![CDATA[{encrypted_reply}]]></Encrypt>
+<MsgSignature><![CDATA[{new_sig}]]></MsgSignature>
+<TimeStamp>{new_ts}</TimeStamp>
+<Nonce><![CDATA[{nonce}]]></Nonce>
+</xml>"""
+    return reply_xml, 200, {"Content-Type": "application/xml"}
+
+
+def _handle_command(msg: str) -> str:
+    """命令路由"""
+    msg = msg.strip().lower()
+
+    if msg in ("/体检", "/check", "/report", "体检", "月度体检"):
+        thread = threading.Thread(target=_run_checkup, daemon=True)
+        thread.start()
+        return "✅ 月度体检已启动，预计 1-2 分钟后报告将推送到您的手机。请留意消息。"
+    elif msg in ("/快照", "/snapshot", "快照", "市值"):
+        thread = threading.Thread(target=_run_snapshot, daemon=True)
+        thread.start()
+        return "✅ 市值快照已启动，即将推送到您的手机。"
+    elif msg in ("/预警", "/alert", "预警"):
+        thread = threading.Thread(target=_run_alert, daemon=True)
+        thread.start()
+        return "✅ 正在检查市场波动..."
+    elif msg in ("/帮助", "/help", "帮助", "help"):
+        return (
+            "🤖 AI 财务助手 支持以下命令：\n\n"
+            "· /体检 — 更新行情 + AI 分析 + 推送报告\n"
+            "· /快照 — 推送最新市值快照\n"
+            "· /预警 — 检查持仓波动\n"
+            "· /帮助 — 显示本菜单"
+        )
+    else:
+        return (
+            f"未识别的命令：「{msg}」\n"
+            "发送 /帮助 查看可用命令。"
+        )
+
+
+def _run_checkup():
+    """后台运行完整体检"""
+    try:
+        from auto_runner import run_market_data, run_analysis
+        run_market_data()
+        run_analysis("monthly_review")
+    except Exception as e:
+        from config import log_error
+        log_error(f"体检失败: {e}")
+
+
+def _run_snapshot():
+    """后台运行市值快照"""
+    try:
+        from auto_runner import run_market_data
+        from wecom_push import push_portfolio_snapshot
+        run_market_data()
+        push_portfolio_snapshot()
+    except Exception as e:
+        from config import log_error
+        log_error(f"快照失败: {e}")
+
+
+def _run_alert():
+    """后台运行预警"""
+    try:
+        from market_alert import check_alerts, push_alerts
+        alerts = check_alerts(threshold=3.0)
+        if alerts:
+            push_alerts(alerts, threshold=3.0)
         else:
-            data["config"]["stock_pct"] += val
-
-    total = data["total_value"] or 1
-    for k in ["etf_pct", "fund_pct", "stock_pct"]:
-        data["config"][k] = round(data["config"][k] / total * 100, 1)
-    data["config"]["cash"] = round(100 - sum(
-        data["config"][k] for k in ["etf_pct", "fund_pct", "stock_pct"]
-    ), 1)
-
-    return data
+            from wecom_push import push_wecom
+            push_wecom("## ✅ 风平浪静\n\n当前持仓无异常波动。")
+    except Exception as e:
+        from config import log_error
+        log_error(f"预警失败: {e}")
 
 
-def _recent_reports(limit: int = 5):
-    """列出最近的分析报告"""
-    reports = sorted(FINANCE_DIR.glob("analysis_*.md"), reverse=True)
-    result = []
-    for r in reports[:limit]:
-        stat = r.stat()
-        label = r.stem.replace("analysis_", "").replace("_", " ")
-        result.append({
-            "name": r.name,
-            "label": label,
-            "time": datetime.fromtimestamp(stat.st_mtime).strftime("%m/%d %H:%M"),
-            "size": f"{stat.st_size / 1024:.0f}KB",
-        })
-    return result
-
-
-def _history_summary():
-    """读取历史 CSV 最近 10 条"""
-    rows = []
-    if HISTORY_FILE.exists():
-        import csv
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                rows.append(row)
-    return rows[-10:]
-
-
-# ── Routes ───────────────────────────────────────────────
+# ── Dashboard (保留，轻量查看) ──────────────────────────
 
 @app.route("/")
 def dashboard():
-    """首页：资产总览"""
+    from scripts.webapp_helpers import _parse_snapshot, _recent_reports, _history_summary
     snap = _parse_snapshot()
     reports = _recent_reports()
     history = _history_summary()
@@ -159,8 +173,7 @@ def dashboard():
 
 @app.route("/history")
 def history_page():
-    """历史净值页"""
-    # 生成图表
+    from scripts.webapp_helpers import _history_summary
     try:
         from history import plot_history
         import matplotlib
@@ -168,11 +181,7 @@ def history_page():
         plot_history()
     except Exception:
         pass
-
-    chart_url = None
-    if CHART_FILE.exists():
-        chart_url = "/chart"
-
+    chart_url = "/chart" if CHART_FILE.exists() else None
     rows = _history_summary()
     return render_template("history.html", rows=rows,
                            chart_url=chart_url, now=datetime.now())
@@ -180,7 +189,6 @@ def history_page():
 
 @app.route("/chart")
 def chart_image():
-    """返回历史图表 PNG"""
     if CHART_FILE.exists():
         return send_file(str(CHART_FILE), mimetype="image/png")
     return "Chart not available", 404
@@ -188,99 +196,69 @@ def chart_image():
 
 @app.route("/api/snapshot")
 def api_snapshot():
-    """JSON API: 当前持仓数据"""
-    snap = _parse_snapshot()
-    return jsonify(snap)
+    from scripts.webapp_helpers import _parse_snapshot
+    return jsonify(_parse_snapshot())
 
 
-# ── 后台任务管理 ─────────────────────────────────────────
+# ── 手机控制台 (保留作为备用触发方式) ──────────────────
 
-_jobs = {}  # {job_id: {status, started, finished, result}}
+@app.route("/control")
+def control_panel():
+    return render_template("control.html", now=datetime.now())
+
+
+# Trigger endpoints keep existing code
+_jobs = {}
 _lock = threading.Lock()
-
-
-def _run_in_background(job_id: str, prompt_name: str):
-    """后台执行分析，完成后自动推送"""
-    with _lock:
-        _jobs[job_id] = {"status": "running", "started": time.time(), "result": None}
-    try:
-        from auto_runner import run_market_data, run_analysis
-        from wecom_push import push_portfolio_snapshot
-
-        # 1. 更新行情
-        run_market_data()
-        # 2. 推送快照
-        push_portfolio_snapshot()
-        # 3. 运行分析（内含双通道推送）
-        run_analysis(prompt_name)
-
-        with _lock:
-            _jobs[job_id]["status"] = "done"
-            _jobs[job_id]["result"] = "报告已推送至企微 + 微信"
-    except Exception as e:
-        with _lock:
-            _jobs[job_id]["status"] = "error"
-            _jobs[job_id]["result"] = str(e)
-    finally:
-        with _lock:
-            _jobs[job_id]["finished"] = time.time()
-
 
 @app.route("/trigger/<action>", methods=["POST"])
 def trigger_action(action: str):
-    """触发操作：/trigger/monthly, /trigger/snapshot, /trigger/rebalance 等"""
     prompts = {
         "monthly": "monthly_review",
-        "snapshot": None,      # 仅快照
+        "snapshot": None,
         "rebalance": "portfolio_rebalance",
         "insurance": "insurance_audit",
         "event": "market_event",
     }
-
     if action not in prompts:
-        return jsonify({"error": f"未知操作: {action}"}), 400
-
+        return jsonify({"error": f"Unknown: {action}"}), 400
     job_id = f"{action}_{datetime.now().strftime('%H%M%S')}"
-
     if action == "snapshot":
-        # 仅快照，不需要 AI 分析
         with _lock:
-            _jobs[job_id] = {"status": "running", "started": time.time(), "result": None}
-        try:
-            from auto_runner import run_market_data
-            from wecom_push import push_portfolio_snapshot
-            run_market_data()
-            push_portfolio_snapshot()
-            with _lock:
-                _jobs[job_id]["status"] = "done"
-                _jobs[job_id]["result"] = "市值快照已推送"
-        except Exception as e:
-            with _lock:
-                _jobs[job_id]["status"] = "error"
-                _jobs[job_id]["result"] = str(e)
-        finally:
-            with _lock:
-                _jobs[job_id]["finished"] = time.time()
+            _jobs[job_id] = {"status": "running", "started": time.time()}
+        threading.Thread(target=_snapshot_job, args=(job_id,), daemon=True).start()
     else:
-        # AI 分析 + 推送（后台执行）
-        prompt_name = prompts[action]
-        threading.Thread(target=_run_in_background,
-                         args=(job_id, prompt_name), daemon=True).start()
-
+        with _lock:
+            _jobs[job_id] = {"status": "running", "started": time.time()}
+        threading.Thread(target=_analysis_job, args=(job_id, prompts[action]), daemon=True).start()
     return jsonify({"job_id": job_id, "status": "accepted"})
+
+
+def _snapshot_job(job_id):
+    try:
+        from auto_runner import run_market_data
+        from wecom_push import push_portfolio_snapshot
+        run_market_data()
+        push_portfolio_snapshot()
+        _jobs[job_id] = {"status": "done", "result": "快照已推送"}
+    except Exception as e:
+        _jobs[job_id] = {"status": "error", "result": str(e)}
+
+
+def _analysis_job(job_id, prompt):
+    try:
+        from auto_runner import run_market_data, run_analysis
+        run_market_data()
+        run_analysis(prompt)
+        _jobs[job_id] = {"status": "done", "result": "报告已推送"}
+    except Exception as e:
+        _jobs[job_id] = {"status": "error", "result": str(e)}
 
 
 @app.route("/api/jobs")
 def api_jobs():
-    """查询后台任务状态"""
     with _lock:
         return jsonify(_jobs)
-
-
-@app.route("/control")
-def control_panel():
-    """手机控制台"""
-    return render_template("control.html", now=datetime.now())
 
 
 # ── Main ─────────────────────────────────────────────────
@@ -289,12 +267,10 @@ def main():
     prod = "--prod" in sys.argv
     host = "0.0.0.0"
     port = 5000
-
-    print(f"\n🌐 AI 财务助手 Dashboard")
+    print(f"\n🌐 AI 财务助手 — 企微回调服务")
     print(f"   地址: http://localhost:{port}")
-    print(f"   模式: {'生产 (waitress)' if prod else '开发 (flask debug)'}")
-    print(f"   数据: {FINANCE_DIR}\n")
-
+    print(f"   回调: http://localhost:{port}/callback/wecom")
+    print(f"   模式: {'生产 (waitress)' if prod else '开发 (flask debug)'}\n")
     if prod:
         from waitress import serve
         serve(app, host=host, port=port)
