@@ -105,19 +105,31 @@ def run_analysis(prompt_name: str = "monthly_review"):
 
 def main():
     prompt_name = "monthly_review"
+    run_alert = False
     if "--prompt" in sys.argv:
         idx = sys.argv.index("--prompt")
         prompt_name = sys.argv[idx + 1]
+    if "--alert" in sys.argv:
+        run_alert = True
 
-    print(f"\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 开始自动运行\n")
+    print(f"\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 开始自动运行")
+    print(f"   模式: {'分析' if not run_alert else '预警'}")
 
-    # 1. 行情
+    # 预警模式：只查波动
+    if run_alert:
+        from market_alert import check_alerts, push_alerts
+        alerts = check_alerts(threshold=3.0)
+        if alerts:
+            push_alerts(alerts, threshold=3.0)
+        print(f"\n✅ 预警检查完成 — {datetime.now().strftime('%H:%M:%S')}")
+        return
+
+    # 完整模式：行情 + 分析 + 推送
     snapshot = run_market_data()
     if snapshot is None:
         print("❌ 行情获取失败，终止")
         sys.exit(1)
 
-    # 2. 分析 + 推送
     report = run_analysis(prompt_name)
     if report:
         print(f"\n✅ 自动运行完成 — {datetime.now().strftime('%H:%M:%S')}")
