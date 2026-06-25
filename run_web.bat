@@ -25,9 +25,9 @@ echo   AI 财务助手 - Web Dashboard
 echo   本地: http://localhost:5000/control
 echo ==============================================
 
-:: 先启动 Flask
+:: 先启动 Flask（后台窗口）
 start "AI-Finance-Flask" /min python scripts\webapp.py --prod
 timeout /t 3 >nul
 
-:: 再启动公网隧道
-python -c "import pycloudflared; pycloudflared.try_cloudflare(5000)"
+:: 再启动公网隧道（前台窗口，显示 URL，Ctrl+C 停止）
+python scripts\start_tunnel.py
