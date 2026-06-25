@@ -316,8 +316,19 @@ def main():
         f.write(summary)
     print(f"\n📁 汇总已保存到: {output_file}")
 
-    # 追加历史记录
+    # 追加 CSV 历史
     save_history(holdings, security_prices, fund_navs, total_value, total_cost, total_pnl)
+
+    # 写入 SQLite
+    try:
+        from database import sync_holdings, save_prices as db_save_prices, save_snapshot
+        all_prices = {**security_prices, **fund_navs}
+        sync_holdings(holdings)
+        db_save_prices(all_prices, holdings)
+        save_snapshot(350000, total_value, total_cost, total_pnl, total_pnl_pct)
+        print("📊 数据库已更新")
+    except Exception as e:
+        print(f"⚠️ 数据库写入失败: {e}")
 
     return holdings, security_prices, fund_navs
 

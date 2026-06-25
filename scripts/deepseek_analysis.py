@@ -58,6 +58,15 @@ def build_context(
         except FileNotFoundError:
             pass
 
+    # 追加 SQLite 结构化摘要
+    try:
+        from database import get_context_summary
+        db_summary = get_context_summary()
+        if db_summary:
+            sections.append(f"\n---\n{db_summary}")
+    except Exception:
+        pass
+
     return "\n".join(sections)
 
 
@@ -172,6 +181,13 @@ def main():
         f.write(result)
 
     print(f"📁 分析报告已保存到: {output_path}")
+
+    # 记入数据库日志
+    try:
+        from database import log_analysis
+        log_analysis(Path(args.prompt).stem, str(output_path))
+    except Exception:
+        pass
 
     # 推送（企微优先 → Server酱兜底）
     prompt_stem = Path(args.prompt).stem
