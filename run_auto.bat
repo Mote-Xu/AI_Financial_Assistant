@@ -1,16 +1,24 @@
 @echo off
 REM AI 财务助手 — 定时自动运行
-REM 添加到 Windows 任务计划程序即可每月/每周自动体检
-REM 用法：手动双击运行，或添加到计划任务
+REM 支持 conda 或纯 pip 环境，自动检测
 
-cd /d E:\Desktop\AI_Financial_Assistant
-
-REM 激活 conda 环境并运行
-call C:\Users\Haoze\anaconda3\Scripts\activate.bat deepseek_v4_api
+cd /d "%~dp0"
 set PYTHONIOENCODING=utf-8
 set NO_PROXY=*
 
-python scripts/auto_runner.py --prompt monthly_review
+REM 尝试 conda 环境（主电脑）
+if exist "C:\Users\Haoze\anaconda3\Scripts\activate.bat" (
+    call C:\Users\Haoze\anaconda3\Scripts\activate.bat deepseek_v4_api
+    goto :run
+)
 
-REM 记录日志
+REM 尝试系统 Python（老电脑/纯 pip）
+python --version >nul 2>&1
+if %errorlevel% equ 0 goto :run
+
+echo [ERROR] 未找到 Python，请先安装
+exit /b 1
+
+:run
+python scripts\auto_runner.py --prompt monthly_review
 echo [%date% %time%] Auto run completed >> auto_run.log
