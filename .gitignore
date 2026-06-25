@@ -2,6 +2,9 @@
 PRIVATE.md
 .env
 
+# SQLite database (contains financial data)
+finance/finance_data.db
+
 # Python
 __pycache__/
 *.pyc
