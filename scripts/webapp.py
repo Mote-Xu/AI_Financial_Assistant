@@ -39,15 +39,16 @@ def wecom_callback():
     POST: 接收消息 → 路由到命令处理
     """
     from wecom_crypto import decrypt, encrypt
+    from config import log_error
 
     sig = request.args.get("msg_signature", "")
     ts = request.args.get("timestamp", "")
     nonce = request.args.get("nonce", "")
 
     if request.method == "GET":
-        # URL 验证
         echostr = request.args.get("echostr", "")
         plain = decrypt(echostr, sig, ts, nonce)
+        log_error(f"CALLBACK GET sig={sig[:20]} ts={ts} plain={'OK' if plain else 'FAIL'}")
         return plain or "verify failed", 200
 
     # POST: 接收消息
@@ -56,12 +57,17 @@ def wecom_callback():
         xml = ET.fromstring(body)
         encrypted = xml.find("Encrypt")
         if encrypted is None:
+            log_error("CALLBACK POST: no Encrypt field")
             return "bad request", 400
         plain = decrypt(encrypted.text, sig, ts, nonce)
         if plain is None:
+            log_error(f"CALLBACK POST: decrypt failed, body={body[:200]}")
             return "decrypt failed", 403
-    except Exception:
+    except Exception as e:
+        log_error(f"CALLBACK POST: parse error {e}, body={body[:200]}")
         return "parse error", 400
+
+    log_error(f"CALLBACK MSG: {plain[:300]}")
 
     # 解析消息内容
     msg_xml = ET.fromstring(plain)
@@ -74,10 +80,17 @@ def wecom_callback():
         return "", 200  # 空回复
 
     msg = content_el.text.strip() if content_el.text else ""
+    log_error(f"CALLBACK CMD: {msg}")
+
     reply = _handle_command(msg)
+    log_error(f"CALLBACK REPLY: {reply[:100]}")
 
     # 加密回复
-    encrypted_reply, new_sig, new_ts = encrypt(reply, nonce)
+    result = encrypt(reply, nonce)
+    if result is None:
+        log_error("CALLBACK ENCRYPT FAILED")
+        return "", 200
+    encrypted_reply, new_sig, new_ts = result
 
     # 构造 XML 响应
     reply_xml = f"""<xml>
@@ -162,7 +175,7 @@ def _run_alert():
 
 @app.route("/")
 def dashboard():
-    from scripts.webapp_helpers import _parse_snapshot, _recent_reports, _history_summary
+    from webapp_helpers import _parse_snapshot, _recent_reports, _history_summary
     snap = _parse_snapshot()
     reports = _recent_reports()
     history = _history_summary()

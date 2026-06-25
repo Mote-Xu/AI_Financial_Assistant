@@ -33,7 +33,10 @@ def _get_corp_config():
                     if line.startswith(env_key + "="):
                         config[cfg_key] = line.split("=", 1)[1].strip().strip('"').strip("'")
 
-    return config if all(config.values()) else None
+    # Allow testing with env var override
+    if not config["corp_id"]:
+        config["corp_id"] = os.environ.get("WECOM_CORP_ID", "")
+    return config if config["token"] and config["aes_key"] else None
 
 
 def _get_aes_key(aes_key_str: str) -> bytes:

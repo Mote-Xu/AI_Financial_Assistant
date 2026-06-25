@@ -1,0 +1,12 @@
+# AI 财务助手 — Cloudflare Tunnel
+# DNS: 先在 Cloudflare 面板添加 CNAME 记录
+#   finance-assistant.mote-pal.xyz → 87fc0324-d76a-4bdf-91a6-1873ae14bb7d.cfargotunnel.com
+# 然后用 cloudflared CLI 注册:
+#   cloudflared tunnel route dns 87fc0324 finance-assistant.mote-pal.xyz
+tunnel: ff961b4a-c4da-40d7-9156-80e2fc2deb39
+credentials-file: C:\Users\Haoze\.cloudflared\ff961b4a-c4da-40d7-9156-80e2fc2deb39.json
+
+ingress:
+  - hostname: finance-assistant.mote-pal.xyz
+    service: http://127.0.0.1:5000
+  - service: http_status:404
