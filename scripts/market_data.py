@@ -17,7 +17,8 @@ import re
 import sys
 from pathlib import Path
 
-from config import FINANCE_DIR, ASSETS_FILE, INCOME_FILE, SNAPSHOT_FILE, HISTORY_FILE
+from config import FINANCE_DIR, ASSETS_FILE, INCOME_FILE, SNAPSHOT_FILE, HISTORY_FILE, \
+    ensure_finance_dir
 
 
 def parse_assets_md(filepath: str = None) -> dict:
@@ -284,6 +285,8 @@ def save_history(holdings: dict, security_prices: dict, fund_navs: dict,
 
 
 def main():
+    ensure_finance_dir()
+
     print("=" * 50)
     print("💰 AI 财务助手 — 市场数据更新")
     print("=" * 50)

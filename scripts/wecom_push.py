@@ -226,14 +226,59 @@ def _extract_summary_from_report(file_path: str, max_lines: int = 15) -> str:
         return "报告已生成，详情请下载附件查看"
 
 
-def _clean_for_wecom(text: str) -> str:
-    """清理 Markdown 以适配企微显示（企微不支持表格等复杂格式）"""
-    # 替换表格竖线（避免被解析）
-    text = text.replace("|", "│")
-    # 去掉过多空行
-    import re
-    text = re.sub(r"\n{4,}", "\n\n\n", text)
-    return text.strip()
+def _chunk_by_lines(text: str, max_bytes: int) -> list:
+    """
+    UTF-8 安全分块 — 按行累积，绝不在多字节字符中间截断。
+
+    策略:
+    1. 逐行累加，跟踪字节数（\n 换行符计入）
+    2. 超限 → flush 当前块，开始新块
+    3. 单行超长（罕见）→ 按字符回退到安全边界
+    """
+    # 保留原始末尾换行符 mark，用于精确重建
+    ends_with_nl = text.endswith("\n")
+    lines = text.split("\n")
+    # 去掉 split 产生的末尾空串，后面重建时加回
+    if ends_with_nl and lines and lines[-1] == "":
+        lines.pop()
+
+    chunks = []
+    current_lines = []
+    current_bytes = 0
+
+    for i, line in enumerate(lines):
+        is_last = (i == len(lines) - 1)
+        nl_bytes = 1 if (not is_last or ends_with_nl) else 0
+        line_bytes = len(line.encode("utf-8")) + nl_bytes
+
+        if current_bytes + line_bytes > max_bytes and current_lines:
+            # flush — 中间块保留末尾 \n（原文中这些行之间有换行）
+            chunks.append("\n".join(current_lines) + "\n")
+            current_lines = []
+            current_bytes = 0
+
+        if line_bytes - nl_bytes > max_bytes:
+            # 单行超长 — 逐段切割直到耗尽
+            remaining = line
+            while remaining:
+                safe = ""
+                for ch in remaining:
+                    if len((safe + ch).encode("utf-8")) > max_bytes - 1:
+                        break
+                    safe += ch
+                chunks.append(safe)
+                remaining = remaining[len(safe):]
+        else:
+            current_lines.append(line)
+            current_bytes += line_bytes
+
+    if current_lines:
+        chunk = "\n".join(current_lines)
+        if ends_with_nl:
+            chunk += "\n"
+        chunks.append(chunk)
+
+    return chunks
 
 
 def push_analysis(analysis_file: str, prompt_name: str = "",
@@ -241,7 +286,7 @@ def push_analysis(analysis_file: str, prompt_name: str = "",
     """
     推送分析报告全文到企微 — 直接在手机企微里阅读
 
-    超长内容自动分块发送，每块不超过 4096 字节
+    超长内容按行分块，UTF-8 安全，绝不丢字。
     """
     from datetime import datetime
 
@@ -260,46 +305,29 @@ def push_analysis(analysis_file: str, prompt_name: str = "",
         return push_wecom(f"## 📊 {label} {now}\n\n报告生成完成，请稍后查看")
 
     # 清理格式
-    text = _clean_for_wecom(raw)
+    text = raw.replace("|", "│")  # │ 防止表格被解析
+    import re
+    text = re.sub(r"\n{4,}", "\n\n\n", text)
+    text = text.strip()
 
-    # 分块（每块 ~3500 字节，留余量给分块标记）
-    MAX_BYTES = 3500
-    body_bytes = text.encode("utf-8")
-    total_bytes = len(body_bytes)
-
-    if total_bytes <= MAX_BYTES:
-        # 单条，直接发
-        msg = f"## 📊 {label} {now}\n\n{text}"
-        return push_wecom(msg)
-
-    # 多条分块
-    chunks = []
-    pos = 0
-    while pos < total_bytes:
-        end = min(pos + MAX_BYTES, total_bytes)
-        chunk_bytes = body_bytes[pos:end]
-        chunk_text = chunk_bytes.decode("utf-8", errors="ignore")
-        # 回退到最后一个完整行
-        if end < total_bytes:
-            last_nl = chunk_text.rfind("\n")
-            if last_nl > len(chunk_text) // 2:
-                chunk_text = chunk_text[:last_nl]
-                end = pos + len(chunk_text.encode("utf-8"))
-        chunks.append(chunk_text.strip())
-        pos = end
-
+    # 分块（3500 字节/块，留余量给 header）
+    chunks = _chunk_by_lines(text, max_bytes=3500)
     total = len(chunks)
+
     import time
     ok_count = 0
     for i, chunk in enumerate(chunks):
-        header = f"## 📊 {label} ({i + 1}/{total}) | {now}\n\n"
+        header = f"## 📊 {label}"
+        if total > 1:
+            header += f" ({i + 1}/{total})"
+        header += f" | {now}\n\n"
         msg = header + chunk
         if push_wecom(msg):
             ok_count += 1
         else:
             print(f"  ⚠️ 第 {i + 1}/{total} 块推送失败")
         if i < total - 1:
-            time.sleep(0.5)  # 避免限流
+            time.sleep(0.5)
 
     print(f"📱 企微报告推送: {ok_count}/{total} 块成功")
     return ok_count == total

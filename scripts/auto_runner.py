@@ -13,7 +13,8 @@ for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
 os.environ.setdefault("NO_PROXY", "*")
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
-from config import PROJECT_ROOT, FINANCE_DIR, SNAPSHOT_FILE, HISTORY_FILE
+from config import PROJECT_ROOT, FINANCE_DIR, SNAPSHOT_FILE, HISTORY_FILE, \
+    ensure_finance_dir, acquire_lock, release_lock, log_error
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from datetime import datetime
@@ -95,6 +96,7 @@ def run_analysis(prompt_name: str = "monthly_review"):
         print("📱 企微推送完成")
     except Exception as e:
         print(f"⚠️ 企微推送失败: {e}")
+        log_error(f"企微推送失败: {e}")
 
     try:
         from wechat_push import push_analysis_summary
@@ -102,6 +104,7 @@ def run_analysis(prompt_name: str = "monthly_review"):
         print("📱 微信推送完成")
     except Exception as e:
         print(f"⚠️ 微信推送失败: {e}")
+        log_error(f"微信推送失败: {e}")
 
     return output_path
 
@@ -115,6 +118,19 @@ def main():
     if "--alert" in sys.argv:
         run_alert = True
 
+    # 初始化 + 文件锁
+    ensure_finance_dir()
+    if not acquire_lock():
+        print("❌ 另一个实例正在运行，退出。")
+        sys.exit(0)
+
+    try:
+        _main(prompt_name, run_alert)
+    finally:
+        release_lock()
+
+
+def _main(prompt_name: str, run_alert: bool):
     print(f"\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 开始自动运行")
     print(f"   模式: {'预警' if run_alert else '分析'}")
 

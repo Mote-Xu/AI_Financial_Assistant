@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-from config import HISTORY_FILE, CHART_FILE
+from config import HISTORY_FILE, CHART_FILE, ensure_finance_dir
 
 
 def load_history() -> list:
@@ -109,6 +109,7 @@ def plot_history():
 
 
 if __name__ == "__main__":
+    ensure_finance_dir()
     if "--plot" in sys.argv:
         plot_history()
     else:

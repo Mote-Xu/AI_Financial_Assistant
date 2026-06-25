@@ -7,14 +7,13 @@
 import os
 import sys
 from datetime import datetime
-from pathlib import Path
 
 # 清代理
 for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
     os.environ.pop(k, None)
 os.environ.setdefault("NO_PROXY", "*")
 
-PROJECT_ROOT = Path(__file__).parent.parent
+from config import PROJECT_ROOT, ensure_finance_dir, acquire_lock, release_lock
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from market_data import parse_assets_md, fetch_stock_and_etf_prices, fetch_fund_nav
@@ -129,18 +128,25 @@ def push_alerts(alerts: list, threshold: float = 3.0):
 
 
 def main():
-    threshold = 3.0
-    if "--threshold" in sys.argv:
-        idx = sys.argv.index("--threshold")
-        threshold = float(sys.argv[idx + 1])
+    ensure_finance_dir()
+    if not acquire_lock():
+        print("❌ 另一个实例正在运行，退出。")
+        sys.exit(0)
+    try:
+        threshold = 3.0
+        if "--threshold" in sys.argv:
+            idx = sys.argv.index("--threshold")
+            threshold = float(sys.argv[idx + 1])
 
-    alerts = check_alerts(threshold)
+        alerts = check_alerts(threshold)
 
-    if alerts:
-        push_alerts(alerts, threshold)
-        print("\n📱 预警已推送")
-    else:
-        print("\n😌 风平浪静")
+        if alerts:
+            push_alerts(alerts, threshold)
+            print("\n📱 预警已推送")
+        else:
+            print("\n😌 风平浪静")
+    finally:
+        release_lock()
 
 
 if __name__ == "__main__":

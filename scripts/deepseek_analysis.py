@@ -10,9 +10,9 @@ import argparse
 from pathlib import Path
 from openai import OpenAI
 
-from config import (PROJECT_ROOT, FINANCE_DIR,
+from config import (PROJECT_ROOT, FINANCE_DIR, ensure_finance_dir,
                     ASSETS_FILE, INCOME_FILE, INSURANCE_FILE,
-                    LIABILITIES_FILE, GOALS_FILE, SNAPSHOT_FILE)
+                    LIABILITIES_FILE, GOALS_FILE, SNAPSHOT_FILE, log_error)
 
 
 def load_file(filepath: str) -> str:
@@ -148,6 +148,8 @@ def main():
                         help="不推送企微和微信")
     args = parser.parse_args()
 
+    ensure_finance_dir()
+
     print("=" * 50)
     print("🧠 AI 财务分析 — DeepSeek API")
     print("=" * 50)
@@ -201,6 +203,7 @@ def main():
             print("📱 企微推送完成")
         except Exception as e:
             print(f"⚠️ 企微推送失败: {e}")
+            log_error(f"企微推送失败: {e}")
 
         try:
             from wechat_push import push_analysis_summary
@@ -208,6 +211,7 @@ def main():
             print("📱 微信推送完成")
         except Exception as e:
             print(f"⚠️ 微信推送失败: {e}")
+            log_error(f"微信推送失败: {e}")
     else:
         print("🔇 跳过推送（--no-push）")
 

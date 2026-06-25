@@ -8,12 +8,13 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-from config import DB_PATH
+from config import DB_PATH, ensure_finance_dir
 
 
 def get_db() -> sqlite3.Connection:
-    """获取数据库连接（自动建表）"""
-    db = sqlite3.connect(str(DB_PATH))
+    """获取数据库连接（自动建表），30s 超时防止并发锁冲突"""
+    ensure_finance_dir()
+    db = sqlite3.connect(str(DB_PATH), timeout=30)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA foreign_keys=ON")

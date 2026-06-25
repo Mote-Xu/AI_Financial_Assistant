@@ -92,19 +92,25 @@ def push_portfolio_snapshot(snapshot_file: str = None) -> bool:
     )
 
 
-def _clean_for_wechat(text: str) -> str:
-    """清理 Markdown 格式以适应微信显示"""
-    text = text.replace("|", "│")
-    import re
-    text = re.sub(r"\n{4,}", "\n\n\n", text)
-    return text.strip()
+def _extract_headlines(text: str, max_chars: int = 200) -> str:
+    """从报告中提取标题行作为摘要（不泄露具体金额）"""
+    lines = text.split("\n")
+    headlines = []
+    for line in lines:
+        s = line.strip()
+        if s.startswith("## ") or s.startswith("**"):
+            headlines.append(s)
+        if len("\n".join(headlines)) > max_chars:
+            break
+    return "\n".join(headlines) if headlines else "报告已生成"
 
 
 def push_analysis_summary(analysis_file: str, prompt_name: str = "") -> bool:
     """
-    推送分析报告全文到微信（Server酱）
-    微信端直接点击消息卡片即可阅读完整报告
-    超长内容自动截断
+    推送通知到微信（Server酱）— 仅发标题摘要 + 提示，不发送完整报告
+
+    Server酱 是第三方中转服务，报告全文不应经过其服务器。
+    完整报告请在企业微信中查看（已通过 wecom_push 直接送达）。
     """
     from datetime import datetime
     now = datetime.now().strftime("%m/%d %H:%M")
@@ -115,27 +121,23 @@ def push_analysis_summary(analysis_file: str, prompt_name: str = "") -> bool:
     }
     label = prompt_labels.get(prompt_name, prompt_name)
 
-    # 读取报告全文
+    # 提取标题级摘要（不含具体金额）
     try:
         with open(analysis_file, "r", encoding="utf-8") as f:
             raw = f.read()
+        headlines = _extract_headlines(raw)
     except Exception:
-        return push_wechat(f"📊 {label} {now}", "报告已生成，请稍后查看")
+        headlines = "报告已生成"
 
-    # 清理格式 + 截断（Server酱建议不超过 30KB）
-    content = _clean_for_wechat(raw)
-    max_bytes = 28000
-    content_bytes = content.encode("utf-8")
-    if len(content_bytes) > max_bytes:
-        content = content_bytes[:max_bytes - 100].decode("utf-8", errors="ignore")
-        content += "\n\n...\n> 内容过长已截断"
-
-    title = f"📊 {label}—{now}"
+    content = f"📊 {label} 分析已完成\n\n"
+    content += f"**报告摘要**:\n{headlines}\n\n"
+    content += f"> 完整报告请查看企业微信\n"
+    content += f"> 生成时间: {now}"
 
     return push_wechat(
-        title=title,
+        title=f"📊 {label}",
         content=content,
-        short=f"财务报告已生成 {now}",
+        short=f"财务报告已生成 {now}，请查看企微",
     )
 
 
