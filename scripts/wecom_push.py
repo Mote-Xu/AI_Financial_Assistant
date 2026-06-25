@@ -76,15 +76,19 @@ def push_portfolio_snapshot(snapshot_file: str = None) -> bool:
 
 
 def push_analysis(analysis_file: str, prompt_name: str = "") -> bool:
-    """推送分析报告到企微——自包含的核心结论 + 关键数字 + 行动，看完即用"""
+    """推送完整分析报告到企微——拆成多条消息，手机看完"""
     import re
     from datetime import datetime
 
     try:
-        with open(analysis_file, "r", encoding="utf-8") as f:
+        p = Path(analysis_file)
+        if not p.is_absolute():
+            p = Path(__file__).parent.parent / analysis_file
+        with open(p, "r", encoding="utf-8") as f:
             text = f.read()
     except FileNotFoundError:
-        return push_wecom(f"## 📊 分析完成\n\n报告已生成，请回电脑查看 `{Path(analysis_file).name}`")
+        print(f"  ⚠️ 文件不存在: {analysis_file}")
+        return False
 
     prompt_labels = {
         "monthly_review": "月度体检", "portfolio_rebalance": "再平衡",
@@ -93,62 +97,47 @@ def push_analysis(analysis_file: str, prompt_name: str = "") -> bool:
     label = prompt_labels.get(prompt_name, prompt_name)
     now = datetime.now().strftime("%m/%d %H:%M")
 
-    lines = [f"## {label} {now}", ""]
+    # 清理 Markdown 格式 → 纯文本（企微不支持表格等复杂格式）
+    text = re.sub(r"\|", "│", text)      # 表格竖线替换
+    text = re.sub(r"#{2,4}\s+", "", text) # 去标题标记
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)  # 去粗体
+    text = re.sub(r"\n\s*\n\s*\n", "\n\n", text)  # 压缩空行
+    text = text.strip()
 
-    # 关键数字（净资产、月结余、总盈亏）
-    numbers = []
-    for pat, tag in [
-        (r"\*\*总资产\*\*[约]?[为]?\s*[¥￥]?([\d,.]+)万", "总资产"),
-        (r"\*\*净资产\*\*[约]?[为]?\s*[¥￥]?([\d,.]+)万", "净资产"),
-        (r"月\s*结\s*余[：:]\s*\*?\*?\+?\s*[¥￥]?([\d,]+)", "月结余"),
-        (r"总\s*盈\s*亏[：:]\s*.*?[¥￥]([\d,]+)", "总盈亏"),
-    ]:
-        m = re.search(pat, text)
-        if m:
-            val = m.group(1).replace(",", "")
-            numbers.append(f"{tag} ¥{val}")
-    if numbers:
-        lines.append(" | ".join(numbers))
-        lines.append("")
+    # 按 ~1000 字节切块（中文约 330 字/块，确保不超 4096 字节限制）
+    MAX_BYTES = 3500  # 留余量
+    chunks = []
+    raw = text.encode("utf-8")
+    pos = 0
+    chunk_num = 0
+    while pos < len(raw):
+        chunk_num += 1
+        end = min(pos + MAX_BYTES, len(raw))
+        # 尽量在换行处切
+        chunk_bytes = raw[pos:end]
+        chunk_text = chunk_bytes.decode("utf-8", errors="ignore")
+        # 回退到最后一个完整行
+        if end < len(raw):
+            last_nl = chunk_text.rfind("\n")
+            if last_nl > len(chunk_text) // 2:
+                chunk_text = chunk_text[:last_nl]
+                end = pos + len(chunk_text.encode("utf-8"))
 
-    # 一句话总结
-    m = re.search(r"\*\*一句话总结\*\*[：:]\s*(.+?)(?:\n|$)", text)
-    if m:
-        # 截短
-        summary = m.group(1).strip()
-        if len(summary) > 200:
-            summary = summary[:195] + "..."
-        lines.append(f"> 📌 {summary}")
-        lines.append("")
+        header = f"📊 {label} ({chunk_num}/{chunk_num + max(1, (len(raw)-pos)//MAX_BYTES)}) | {now}\n\n"
+        chunks.append(header + chunk_text.strip())
+        pos = pos + len(chunk_text.encode("utf-8"))
 
-    # 行动清单（带「为什么」）
-    action_section = re.search(
-        r"(?:###\s*|##\s*)6\.?\s*行动清单.*?\n(.+?)(?:\n---|\n## |\Z)",
-        text, re.DOTALL
-    )
-    if action_section:
-        lines.append("**🎯 行动**")
-        # 按行动项拆解
-        act_blocks = re.split(r"\n(?=\d+\.\s+\*\*)", action_section.group(1))
-        for block in act_blocks[:3]:
-            block = block.strip()
-            # 取行动名
-            m_name = re.match(r"\d+\.\s+\*\*(.+?)\*\*", block)
-            if not m_name:
-                continue
-            name = m_name.group(1).strip()
-            lines.append(f"- **{name}**")
-            # 取操作
-            m_op = re.search(r"\*\*操作\*\*[：:]\s*(.+?)(?:\n|$)", block)
-            if m_op:
-                op = m_op.group(1).strip()[:120]
-                lines.append(f"  {op}")
-            # 取原因
-            m_why = re.search(r"\*\*为什么\*\*[：:]\s*(.+?)(?:\n|$)", block)
-            if m_why:
-                why = m_why.group(1).strip()[:150]
-                lines.append(f"  *{why}*")
-        lines.append("")
+    # 计算实际分块数
+    total_chunks = len(chunks)
+    for i, chunk in enumerate(chunks):
+        # 更新正确的分块信息
+        chunk = re.sub(r"\(\d+/\d+\)", f"({i+1}/{total_chunks})", chunk, count=1)
+        ok = push_wecom(chunk)
+        if not ok:
+            print(f"  ⚠️ 第 {i+1}/{total_chunks} 块推送失败")
+            return False
+        if i < total_chunks - 1:
+            import time
+            time.sleep(0.5)  # 避免发太快被限流
 
-    msg = "\n".join(lines)
-    return push_wecom(msg)
+    return True
