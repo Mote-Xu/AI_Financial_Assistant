@@ -30,9 +30,14 @@ def push_wecom(content: str) -> bool:
         print("⚠️ 未配置 WECOM_WEBHOOK_KEY，跳过企微推送")
         return False
 
-    # 企微限制 4096 字符
-    if len(content) > 4096:
-        content = content[:4080] + "\n\n> ⚠️ 内容过长已截断"
+    # 企微限制 4096 字节（中文字≈3字节/字，实际约1300字）
+    max_bytes = 4096
+    content_bytes = content.encode("utf-8")
+    if len(content_bytes) > max_bytes:
+        # 按字节截断
+        trimmed = content_bytes[:max_bytes - 80]
+        content = trimmed.decode("utf-8", errors="ignore").rstrip()
+        content += "\n\n> ⚠️ 内容过长已截断"
 
     try:
         resp = requests.post(url, json={
@@ -71,69 +76,79 @@ def push_portfolio_snapshot(snapshot_file: str = None) -> bool:
 
 
 def push_analysis(analysis_file: str, prompt_name: str = "") -> bool:
-    """推送分析报告到企微（提取关键摘要 + 完整要点）"""
+    """推送分析报告到企微——自包含的核心结论 + 关键数字 + 行动，看完即用"""
     import re
     from datetime import datetime
 
     try:
         with open(analysis_file, "r", encoding="utf-8") as f:
-            content = f.read()
+            text = f.read()
     except FileNotFoundError:
-        return push_wecom("📊 财务分析\n\n报告生成失败")
+        return push_wecom(f"## 📊 分析完成\n\n报告已生成，请回电脑查看 `{Path(analysis_file).name}`")
 
-    # 构建精简 Markdown 报告
-    parts = [f"## 📊 财务分析 [{prompt_name}]"]
-    parts.append("")
+    prompt_labels = {
+        "monthly_review": "月度体检", "portfolio_rebalance": "再平衡",
+        "insurance_audit": "保障审计", "market_event": "市场应急"
+    }
+    label = prompt_labels.get(prompt_name, prompt_name)
+    now = datetime.now().strftime("%m/%d %H:%M")
+
+    lines = [f"## {label} {now}", ""]
+
+    # 关键数字（净资产、月结余、总盈亏）
+    numbers = []
+    for pat, tag in [
+        (r"\*\*总资产\*\*[约]?[为]?\s*[¥￥]?([\d,.]+)万", "总资产"),
+        (r"\*\*净资产\*\*[约]?[为]?\s*[¥￥]?([\d,.]+)万", "净资产"),
+        (r"月\s*结\s*余[：:]\s*\*?\*?\+?\s*[¥￥]?([\d,]+)", "月结余"),
+        (r"总\s*盈\s*亏[：:]\s*.*?[¥￥]([\d,]+)", "总盈亏"),
+    ]:
+        m = re.search(pat, text)
+        if m:
+            val = m.group(1).replace(",", "")
+            numbers.append(f"{tag} ¥{val}")
+    if numbers:
+        lines.append(" | ".join(numbers))
+        lines.append("")
 
     # 一句话总结
-    m = re.search(r"\*\*一句话总结\*\*[：:]\s*(.+?)(?:\n|$)", content)
+    m = re.search(r"\*\*一句话总结\*\*[：:]\s*(.+?)(?:\n|$)", text)
     if m:
-        parts.append(f"> 📌 {m.group(1).strip()}")
-        parts.append("")
+        # 截短
+        summary = m.group(1).strip()
+        if len(summary) > 200:
+            summary = summary[:195] + "..."
+        lines.append(f"> 📌 {summary}")
+        lines.append("")
 
-    # 提取 6 大段落的标题 + 关键数字（不取全文，避免超 4096）
-    sections = {
-        "资产总览": r"(?:\*\*|###\s*)\d\.\s*资产总览",
-        "现金流": r"(?:\*\*|###\s*)\d\.\s*现金流健康度",
-        "投资组合": r"(?:\*\*|###\s*)\d\.\s*投资组合诊断",
-        "保险保障": r"(?:\*\*|###\s*)\d\.\s*保险保障检查",
-        "目标进度": r"(?:\*\*|###\s*)\d\.\s*目标进度",
-    }
-
-    for label, pattern in sections.items():
-        block = re.search(pattern + r".*?(?=(?:\*\*|###\s*)\d\.|###\s*\d\.|\Z)", content, re.DOTALL)
-        if block:
-            text = block.group(0)
-            # 清理格式，压缩长度
-            text = re.sub(r"\n\s*\n", "\n", text)  # 去多余空行
-            text = re.sub(r"[-*]\s+\*\*", "- **", text)  # 保持列表格式
-            if len(text) > 600:
-                text = text[:590] + "..."
-            parts.append(f"**{label}**")
-            parts.append(text.strip())
-            parts.append("")
-
-    # 行动清单
-    action_section = re.search(r"(?:###\s*|##\s*)6\.?\s*行动清单.*?\n(.+?)(?:\n---|\n## |\Z)", content, re.DOTALL)
+    # 行动清单（带「为什么」）
+    action_section = re.search(
+        r"(?:###\s*|##\s*)6\.?\s*行动清单.*?\n(.+?)(?:\n---|\n## |\Z)",
+        text, re.DOTALL
+    )
     if action_section:
-        lines = action_section.group(1).strip().split("\n")
-        parts.append("**🎯 本月行动**")
-        for line in lines:
-            line = line.strip()
-            if re.match(r"\d\.", line) or line.startswith("-"):
-                parts.append(f"> {line}")
-            elif line.startswith("**") and "优先" in line:
-                parts.append(f"\n{line}")
-        parts.append("")
+        lines.append("**🎯 行动**")
+        # 按行动项拆解
+        act_blocks = re.split(r"\n(?=\d+\.\s+\*\*)", action_section.group(1))
+        for block in act_blocks[:3]:
+            block = block.strip()
+            # 取行动名
+            m_name = re.match(r"\d+\.\s+\*\*(.+?)\*\*", block)
+            if not m_name:
+                continue
+            name = m_name.group(1).strip()
+            lines.append(f"- **{name}**")
+            # 取操作
+            m_op = re.search(r"\*\*操作\*\*[：:]\s*(.+?)(?:\n|$)", block)
+            if m_op:
+                op = m_op.group(1).strip()[:120]
+                lines.append(f"  {op}")
+            # 取原因
+            m_why = re.search(r"\*\*为什么\*\*[：:]\s*(.+?)(?:\n|$)", block)
+            if m_why:
+                why = m_why.group(1).strip()[:150]
+                lines.append(f"  *{why}*")
+        lines.append("")
 
-    now = datetime.now().strftime("%m/%d %H:%M")
-    fname = Path(analysis_file).name
-    parts.append(f"---\n📁 完整报告: `{fname}` | {now}")
-
-    msg = "\n".join(parts)
-
-    # 截断安全检查
-    if len(msg) > 4000:
-        msg = msg[:3980] + "\n\n> ⚠️ 报告过长已截断，完整版请查看本地文件"
-
+    msg = "\n".join(lines)
     return push_wecom(msg)
