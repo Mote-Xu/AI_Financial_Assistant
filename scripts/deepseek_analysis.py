@@ -173,12 +173,20 @@ def main():
 
     print(f"📁 分析报告已保存到: {output_path}")
 
-    # 微信推送
+    # 推送（企微优先 → Server酱兜底）
+    prompt_stem = Path(args.prompt).stem
+    try:
+        from wecom_push import push_analysis
+        if push_analysis(str(output_path), prompt_name=prompt_stem):
+            return
+    except Exception:
+        pass
+
     try:
         from wechat_push import push_analysis_summary
-        push_analysis_summary(str(output_path), prompt_name=Path(args.prompt).stem)
+        push_analysis_summary(str(output_path), prompt_name=prompt_stem)
     except Exception as e:
-        print(f"⚠️ 微信推送跳过: {e}")
+        print(f"⚠️ 推送跳过: {e}")
 
 
 if __name__ == "__main__":
