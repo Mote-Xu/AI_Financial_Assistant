@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AI 财务助手 · 控制台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0f172a; color: #e2e8f0;
+            min-height: 100vh; display: flex; flex-direction: column;
+        }
+        .header {
+            text-align: center; padding: 2rem 1rem 1rem;
+            border-bottom: 1px solid #1e293b;
+        }
+        .header h1 { font-size: 1.5rem; }
+        .header p { color: #64748b; font-size: 0.85rem; margin-top: 0.25rem; }
+        .actions {
+            flex: 1; padding: 1rem;
+            display: flex; flex-direction: column; gap: 0.75rem;
+            max-width: 400px; margin: 0 auto; width: 100%;
+        }
+        .btn {
+            display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+            padding: 1.25rem 1rem; border-radius: 12px; border: none;
+            font-size: 1.1rem; font-weight: 700; cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+            text-decoration: none; color: inherit;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-main { background: #2563eb; color: #fff; }
+        .btn-snap { background: #0d9488; color: #fff; }
+        .btn-balance { background: #7c3aed; color: #fff; }
+        .btn-insurance { background: #d97706; color: #fff; }
+        .btn-event { background: #dc2626; color: #fff; }
+        .btn:disabled { opacity: 0.4; pointer-events: none; }
+        .status {
+            text-align: center; padding: 0.5rem 1rem 1rem;
+            font-size: 0.85rem; color: #64748b;
+        }
+        .status.running { color: #facc15; }
+        .status.done { color: #4ade80; }
+        .status.error { color: #f87171; }
+        .links {
+            padding: 1rem; text-align: center; border-top: 1px solid #1e293b;
+        }
+        .links a { color: #38bdf8; text-decoration: none; font-size: 0.85rem; }
+        .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.3rem; }
+        .dot.green { background: #4ade80; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 AI 财务助手</h1>
+        <p>点击按钮，报告自动推送到你的手机</p>
+    </div>
+
+    <div class="actions">
+        <button class="btn btn-main" onclick="trigger('monthly')" id="btn-monthly">
+            📊 月度体检
+        </button>
+        <button class="btn btn-snap" onclick="trigger('snapshot')" id="btn-snapshot">
+            📈 市值快照
+        </button>
+        <button class="btn btn-balance" onclick="trigger('rebalance')" id="btn-rebalance">
+            ⚖️ 再平衡建议
+        </button>
+        <button class="btn btn-insurance" onclick="trigger('insurance')" id="btn-insurance">
+            🛡️ 保障审计
+        </button>
+        <button class="btn btn-event" onclick="trigger('event')" id="btn-event">
+            🔥 市场应急
+        </button>
+    </div>
+
+    <div class="status" id="status">准备就绪</div>
+
+    <div class="links">
+        <a href="/">📊 资产看板</a> &nbsp;·&nbsp;
+        <a href="/history">📈 历史走势</a>
+    </div>
+
+    <script>
+        function trigger(action) {
+            const labels = {monthly:'月度体检', snapshot:'市值快照', rebalance:'再平衡', insurance:'保障审计', event:'市场应急'};
+            const status = document.getElementById('status');
+            const btn = document.getElementById('btn-' + action);
+
+            status.textContent = '正在执行 ' + labels[action] + '...';
+            status.className = 'status running';
+            btn.disabled = true;
+
+            fetch('/trigger/' + action, {method:'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'accepted') {
+                        status.textContent = '⏳ ' + labels[action] + ' 已启动，1-2 分钟后报告推送到手机';
+                        status.className = 'status running';
+                        // Poll for completion
+                        pollJob(action + '_' + 'running');
+                    } else {
+                        status.textContent = '失败: ' + (data.error || '未知');
+                        status.className = 'status error';
+                    }
+                })
+                .catch(err => {
+                    status.textContent = '网络错误: ' + err.message;
+                    status.className = 'status error';
+                })
+                .finally(() => {
+                    setTimeout(() => { btn.disabled = false; }, 5000);
+                });
+        }
+
+        function pollJob(prefix) {
+            const status = document.getElementById('status');
+            let attempts = 0;
+            const check = () => {
+                fetch('/api/jobs')
+                    .then(r => r.json())
+                    .then(jobs => {
+                        const matching = Object.entries(jobs).find(([id]) => id.startsWith(action_name));
+                        if (matching) {
+                            const j = matching[1];
+                            if (j.status === 'done') {
+                                status.textContent = '✅ ' + j.result;
+                                status.className = 'status done';
+                                return;
+                            } else if (j.status === 'error') {
+                                status.textContent = '❌ ' + j.result;
+                                status.className = 'status error';
+                                return;
+                            }
+                        }
+                        attempts++;
+                        if (attempts < 30) setTimeout(check, 3000);
+                        else status.textContent = '⏱️ 仍在运行，请稍后查看手机';
+                    });
+            };
+            let action_name = null;
+            // Capture the action from initial trigger
+            document.querySelectorAll('.btn').forEach(b => {
+                b.addEventListener('click', function() { action_name = this.id.replace('btn-',''); });
+            });
+            // Fallback: poll all jobs
+            const poll = () => {
+                fetch('/api/jobs')
+                    .then(r => r.json())
+                    .then(jobs => {
+                        const entries = Object.values(jobs);
+                        const running = entries.filter(j => j.status === 'running');
+                        if (running.length === 0 && entries.length > 0) {
+                            const last = entries.sort((a,b) => b.started - a.started)[0];
+                            if (last.status === 'done') {
+                                status.textContent = '✅ ' + last.result;
+                                status.className = 'status done';
+                                return;
+                            } else if (last.status === 'error') {
+                                status.textContent = '❌ ' + last.result;
+                                status.className = 'status error';
+                                return;
+                            }
+                        }
+                        attempts++;
+                        if (attempts < 30) setTimeout(poll, 3000);
+                        else status.textContent = '⏱️ 仍在运行，请稍后查看手机';
+                    });
+            };
+            setTimeout(poll, 5000);
+        }
+    </script>
+</body>
+</html>

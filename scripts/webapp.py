@@ -1,5 +1,5 @@
 """
-Flask Web Dashboard — AI 财务助手
+Flask Web Dashboard + 手机控制台 — AI 财务助手
 用法:
     python scripts/webapp.py              # 开发模式 (debug=True)
     python scripts/webapp.py --prod       # 生产模式 (waitress, port=5000)
@@ -7,6 +7,8 @@ Flask Web Dashboard — AI 财务助手
 
 import sys
 import os
+import threading
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -16,7 +18,7 @@ from config import (PROJECT_ROOT, FINANCE_DIR, SNAPSHOT_FILE,
                     HISTORY_FILE, DB_PATH, CHART_FILE, ensure_finance_dir)
 ensure_finance_dir()
 
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import Flask, render_template, jsonify, request, send_file, redirect, url_for
 from datetime import datetime
 import json
 
@@ -191,55 +193,94 @@ def api_snapshot():
     return jsonify(snap)
 
 
-@app.route("/webhook/wecom", methods=["GET", "POST"])
-def wecom_webhook():
-    """
-    企微机器人回调端点（骨架）
-    GET: URL 验证（企微配置时需要）
-    POST: 接收消息 → 触发操作
-    """
-    if request.method == "GET":
-        # 企微 URL 验证
-        echostr = request.args.get("echostr", "")
-        return echostr
+# ── 后台任务管理 ─────────────────────────────────────────
 
-    # POST: 解析消息
+_jobs = {}  # {job_id: {status, started, finished, result}}
+_lock = threading.Lock()
+
+
+def _run_in_background(job_id: str, prompt_name: str):
+    """后台执行分析，完成后自动推送"""
+    with _lock:
+        _jobs[job_id] = {"status": "running", "started": time.time(), "result": None}
     try:
-        data = request.get_json(force=True, silent=True) or {}
-        msg = data.get("text", {}).get("content", "").strip()
-    except Exception:
-        msg = ""
+        from auto_runner import run_market_data, run_analysis
+        from wecom_push import push_portfolio_snapshot
 
-    # 命令路由
-    if msg in ("/体检", "/report", "/check"):
-        # 异步触发分析（简化版：直接同步调用）
+        # 1. 更新行情
+        run_market_data()
+        # 2. 推送快照
+        push_portfolio_snapshot()
+        # 3. 运行分析（内含双通道推送）
+        run_analysis(prompt_name)
+
+        with _lock:
+            _jobs[job_id]["status"] = "done"
+            _jobs[job_id]["result"] = "报告已推送至企微 + 微信"
+    except Exception as e:
+        with _lock:
+            _jobs[job_id]["status"] = "error"
+            _jobs[job_id]["result"] = str(e)
+    finally:
+        with _lock:
+            _jobs[job_id]["finished"] = time.time()
+
+
+@app.route("/trigger/<action>", methods=["POST"])
+def trigger_action(action: str):
+    """触发操作：/trigger/monthly, /trigger/snapshot, /trigger/rebalance 等"""
+    prompts = {
+        "monthly": "monthly_review",
+        "snapshot": None,      # 仅快照
+        "rebalance": "portfolio_rebalance",
+        "insurance": "insurance_audit",
+        "event": "market_event",
+    }
+
+    if action not in prompts:
+        return jsonify({"error": f"未知操作: {action}"}), 400
+
+    job_id = f"{action}_{datetime.now().strftime('%H%M%S')}"
+
+    if action == "snapshot":
+        # 仅快照，不需要 AI 分析
+        with _lock:
+            _jobs[job_id] = {"status": "running", "started": time.time(), "result": None}
         try:
-            from auto_runner import run_analysis
-            # TODO: 改为后台线程执行，避免企微 5s 超时
-            report = run_analysis("monthly_review")
-            reply = "✅ 月度体检已完成，报告已推送到企微。"
-        except Exception as e:
-            reply = f"❌ 体检失败: {e}"
-    elif msg in ("/快照", "/snapshot"):
-        try:
+            from auto_runner import run_market_data
             from wecom_push import push_portfolio_snapshot
+            run_market_data()
             push_portfolio_snapshot()
-            reply = "✅ 市值快照已推送。"
+            with _lock:
+                _jobs[job_id]["status"] = "done"
+                _jobs[job_id]["result"] = "市值快照已推送"
         except Exception as e:
-            reply = f"❌ 快照失败: {e}"
+            with _lock:
+                _jobs[job_id]["status"] = "error"
+                _jobs[job_id]["result"] = str(e)
+        finally:
+            with _lock:
+                _jobs[job_id]["finished"] = time.time()
     else:
-        reply = (
-            "🤖 AI 财务助手\n\n"
-            "支持命令：\n"
-            "• /体检 — 运行月度分析\n"
-            "• /快照 — 推送市值快照\n"
-            "• /帮助 — 显示本菜单"
-        )
+        # AI 分析 + 推送（后台执行）
+        prompt_name = prompts[action]
+        threading.Thread(target=_run_in_background,
+                         args=(job_id, prompt_name), daemon=True).start()
 
-    return jsonify({
-        "msgtype": "text",
-        "text": {"content": reply},
-    })
+    return jsonify({"job_id": job_id, "status": "accepted"})
+
+
+@app.route("/api/jobs")
+def api_jobs():
+    """查询后台任务状态"""
+    with _lock:
+        return jsonify(_jobs)
+
+
+@app.route("/control")
+def control_panel():
+    """手机控制台"""
+    return render_template("control.html", now=datetime.now())
 
 
 # ── Main ─────────────────────────────────────────────────
