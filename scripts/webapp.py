@@ -82,7 +82,7 @@ def wecom_callback():
         event_key = msg_xml.find("EventKey")
         if event_el is not None and event_el.text == "click" and event_key is not None:
             key = event_key.text
-            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助", "CHART": "/走势", "FIRE": "/fire"}
+            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助", "CHART": "/走势", "FIRE": "/fire", "BACKTEST": "/回测 510300"}
             msg = cmd_map.get(key, "/帮助")
         else:
             return "", 200
@@ -119,6 +119,10 @@ def _handle_command(msg: str, user_id: str = "") -> str:
     elif msg in ("/预警", "/alert", "预警"):
         threading.Thread(target=_run_alert, args=(user_id,), daemon=True).start()
         return "✅ 正在检查持仓波动..."
+    elif msg.startswith("/回测") or msg.startswith("/backtest") or msg.startswith("回测"):
+        code = msg.split()[-1] if len(msg.split()) > 1 else "510300"
+        threading.Thread(target=_run_backtest, args=(user_id, code), daemon=True).start()
+        return f"📊 正在回测 {code}..."
     elif msg in ("/fire", "fire", "财务自由", "退休"):
         threading.Thread(target=_run_fire, args=(user_id,), daemon=True).start()
         return "🏝️ 正在计算 FIRE 时间线..."
@@ -133,6 +137,7 @@ def _handle_command(msg: str, user_id: str = "") -> str:
             "· /预警 — 波动检查\n"
             "· /走势 — 净值图表\n"
             "· /fire — 财务自由推算\n"
+            "· /回测 510300 — 定投回测\n"
             "· /帮助 — 菜单"
         )
     else:
@@ -202,6 +207,30 @@ def _run_snapshot(user_id: str):
             send_to_user(user_id, f"❌ 快照失败: {e}")
         from config import log_error
         log_error(f"快照失败: {e}")
+
+
+def _run_backtest(user_id: str, code: str = "510300"):
+    """运行定投回测"""
+    try:
+        from wecom_app import send_to_user
+        from backtest import fetch_history, simulate_dca, compare_lump_sum, format_report, KNOWN_SYMBOLS
+        name = KNOWN_SYMBOLS.get(code, code)
+        send_to_user(user_id, f"📊 正在拉取 {name} 历史数据...")
+        df = fetch_history(code, years=3)
+        if df.empty:
+            send_to_user(user_id, f"❌ {code} 无历史数据")
+            return
+        monthly = 2000
+        total = monthly * 3 * 12
+        result = simulate_dca(df, monthly)
+        result["code"] = code
+        result["name"] = name
+        compare = compare_lump_sum(df, total, monthly)
+        report = format_report(result, compare)
+        send_to_user(user_id, report)
+    except Exception as e:
+        from config import log_error
+        log_error(f"Backtest failed: {e}")
 
 
 def _run_fire(user_id: str):

@@ -29,6 +29,7 @@ menu = {
             "name": "📋 更多",
             "sub_button": [
                 {"name": "📈 走势", "type": "click", "key": "CHART"},
+                {"name": "📊 回测", "type": "click", "key": "BACKTEST"},
                 {"name": "❓ 帮助", "type": "click", "key": "HELP"},
             ],
         },
