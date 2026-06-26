@@ -122,11 +122,13 @@ def _handle_command(msg: str, user_id: str = "") -> str:
     elif msg in ("/走势", "/history", "/chart", "走势", "历史"):
         threading.Thread(target=_run_chart, args=(user_id,), daemon=True).start()
         return "✅ 正在生成走势图..."
+    elif msg in ("/帮助", "/help", "帮助", "help"):
         return (
             "🤖 AI 财务助手\n\n"
             "· /体检 — AI 分析 + 推送\n"
             "· /快照 — 最新市值\n"
             "· /预警 — 波动检查\n"
+            "· /走势 — 净值图表\n"
             "· /帮助 — 菜单"
         )
     else:
@@ -134,18 +136,38 @@ def _handle_command(msg: str, user_id: str = "") -> str:
 
 
 def _run_checkup(user_id: str):
-    """后台运行完整体检，结果发到应用私聊"""
+    """后台运行完整体检，报告直接发到应用私聊"""
     try:
         from wecom_app import send_to_user
-        from auto_runner import run_market_data, run_analysis
+        from auto_runner import run_market_data
+        from deepseek_analysis import load_file, build_context, call_deepseek
+        from config import FINANCE_DIR
+        from datetime import datetime
+
         if user_id:
             send_to_user(user_id, "📊 正在更新行情...")
         run_market_data()
+
         if user_id:
-            send_to_user(user_id, "🤖 正在 AI 分析...")
-        run_analysis("monthly_review")
+            send_to_user(user_id, "🤖 正在 AI 分析（约需 1 分钟）...")
+        prompt = load_file("prompts/monthly_review.md")
+        context = build_context()
+        result = call_deepseek(prompt, context)
+
+        # 保存报告
+        output = FINANCE_DIR / f"analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
+        with open(output, "w", encoding="utf-8") as f:
+            f.write(f"# 财务分析报告\n> 自动生成: {datetime.now()}\n\n")
+            f.write(result)
+
+        # 发到应用私聊（分多段，每段不超过 2048 字符）
         if user_id:
-            send_to_user(user_id, "✅ 月度体检完成！报告已推送。")
+            MAX = 1800
+            for i in range(0, len(result), MAX):
+                chunk = result[i:i+MAX]
+                prefix = "📊 " if i == 0 else ""
+                send_to_user(user_id, prefix + chunk)
+            send_to_user(user_id, "✅ 月度体检完成")
     except Exception as e:
         if user_id:
             from wecom_app import send_to_user
