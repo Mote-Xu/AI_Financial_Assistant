@@ -152,6 +152,9 @@ def _handle_command(msg: str, user_id: str = "") -> str:
     elif msg in ("/走势", "/history", "/chart", "走势", "历史"):
         _executor.submit(_run_chart, user_id)
         return "✅ 正在生成走势图..."
+    elif msg in ("/健康", "/health", "健康", "health"):
+        _executor.submit(_run_health, user_id)
+        return "🏥 正在系统体检..."
     elif msg in ("/帮助", "/help", "帮助", "help"):
         return (
             "🤖 AI 财务助手\n\n"
@@ -161,6 +164,7 @@ def _handle_command(msg: str, user_id: str = "") -> str:
             "· /走势 — 净值图表\n"
             "· /fire — 财务自由推算\n"
             "· /回测 510300 — 定投回测\n"
+            "· /健康 — 系统体检\n"
             "· /帮助 — 菜单"
         )
     else:
@@ -277,6 +281,19 @@ def _run_fire(user_id: str):
             send_to_user(user_id, f"❌ FIRE 计算失败: {e}")
         from config import log_error
         log_error(f"FIRE failed: {e}")
+
+
+def _run_health(user_id: str):
+    """运行系统健康检查"""
+    try:
+        from wecom_app import send_to_user
+        from health_check import run_all, format_report
+        results, all_ok = run_all()
+        send_to_user(user_id, format_report(results, all_ok))
+    except Exception as e:
+        if user_id:
+            from wecom_app import send_to_user
+            send_to_user(user_id, f"❌ 健康检查失败: {e}")
 
 
 def _run_chart(user_id: str):
