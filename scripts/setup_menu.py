@@ -1,4 +1,4 @@
-"""设置企微自建应用底部菜单 (最多 3 个一级按钮)"""
+"""设置企微自建应用底部菜单"""
 import sys
 sys.path.insert(0, ".")
 from wecom_app import _get_token, _get_app_config
@@ -21,25 +21,24 @@ menu = {
             ],
         },
         {
-            "name": "⚙️ 设置",
-            "sub_button": [
-                {"name": "❓ 帮助", "type": "click", "key": "HELP"},
-                {"name": "📊 资产看板", "type": "view", "url": "https://finance-assistant.mote-pal.xyz"},
-                {"name": "📈 历史走势", "type": "view", "url": "https://finance-assistant.mote-pal.xyz/history"},
-            ],
+            "name": "📈 走势",
+            "type": "click",
+            "key": "CHART",
         },
         {
-            "name": "🌐 看板",
-            "type": "view",
-            "url": "https://finance-assistant.mote-pal.xyz",
+            "name": "📋 更多",
+            "sub_button": [
+                {"name": "❓ 帮助", "type": "click", "key": "HELP"},
+                {"name": "📊 看板", "type": "view", "url": "https://finance-assistant.mote-pal.xyz"},
+            ],
         },
     ]
 }
 
 url = f"https://qyapi.weixin.qq.com/cgi-bin/menu/create?access_token={token}&agentid={cfg['agentid']}"
-r = requests.post(url, json=menu, timeout=10)
-data = r.json()
+resp = requests.post(url, json=menu, timeout=10)
+data = resp.json()
 if data.get("errcode") == 0:
-    print("✅ 菜单设置成功！")
+    print("✅ 菜单已更新")
 else:
-    print(f"❌ 失败: {data}")
+    print(f"❌ {data}")

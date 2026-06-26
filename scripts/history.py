@@ -9,6 +9,15 @@ from pathlib import Path
 from datetime import datetime
 
 from config import HISTORY_FILE, CHART_FILE, ensure_finance_dir
+# 修复中文显示
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+try:
+    plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "DejaVu Sans"]
+except Exception:
+    pass
+plt.rcParams["axes.unicode_minus"] = False
 
 
 def load_history() -> list:

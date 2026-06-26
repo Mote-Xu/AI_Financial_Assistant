@@ -82,7 +82,7 @@ def wecom_callback():
         event_key = msg_xml.find("EventKey")
         if event_el is not None and event_el.text == "click" and event_key is not None:
             key = event_key.text
-            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助"}
+            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助", "CHART": "/走势"}
             msg = cmd_map.get(key, "/帮助")
         else:
             return "", 200
@@ -94,29 +94,16 @@ def wecom_callback():
     user_id = from_user.text.strip() if from_user is not None and from_user.text else ""
     log_error(f"CALLBACK CMD: {msg} from {user_id}")
 
-    # 先发即时确认（通过应用 API，绕过 5s 超时限制）
+    # 通过应用 API 发回复（比加密 XML 更可靠，支持长文本）
     if msg and user_id:
-        from wecom_app import send_to_user
-        threading.Thread(target=lambda: send_to_user(user_id, f"⏳ 收到「{msg}」，正在处理..."), daemon=True).start()
+        reply_text = _handle_command(msg, user_id)
+        def _send(uid, txt):
+            from wecom_app import send_to_user
+            send_to_user(uid, txt)
+        threading.Thread(target=_send, args=(user_id, reply_text), daemon=True).start()
+        log_error(f"CALLBACK API SENT: {reply_text[:80]}")
 
-    reply = _handle_command(msg, user_id)
-    log_error(f"CALLBACK REPLY: {reply[:100]}")
-
-    # 加密回复
-    result = encrypt(reply, nonce)
-    if result is None:
-        log_error("CALLBACK ENCRYPT FAILED")
-        return reply or "ok", 200
-    encrypted_reply, new_sig, new_ts = result
-
-    # 构造 XML 响应
-    reply_xml = f"""<xml>
-<Encrypt><![CDATA[{encrypted_reply}]]></Encrypt>
-<MsgSignature><![CDATA[{new_sig}]]></MsgSignature>
-<TimeStamp>{new_ts}</TimeStamp>
-<Nonce><![CDATA[{nonce}]]></Nonce>
-</xml>"""
-    return reply_xml, 200, {"Content-Type": "application/xml"}
+    return "", 200
 
 
 def _handle_command(msg: str, user_id: str = "") -> str:
@@ -132,7 +119,9 @@ def _handle_command(msg: str, user_id: str = "") -> str:
     elif msg in ("/预警", "/alert", "预警"):
         threading.Thread(target=_run_alert, args=(user_id,), daemon=True).start()
         return "✅ 正在检查持仓波动..."
-    elif msg in ("/帮助", "/help", "帮助", "help"):
+    elif msg in ("/走势", "/history", "/chart", "走势", "历史"):
+        threading.Thread(target=_run_chart, args=(user_id,), daemon=True).start()
+        return "✅ 正在生成走势图..."
         return (
             "🤖 AI 财务助手\n\n"
             "· /体检 — AI 分析 + 推送\n"
@@ -187,6 +176,45 @@ def _run_snapshot(user_id: str):
             send_to_user(user_id, f"❌ 快照失败: {e}")
         from config import log_error
         log_error(f"快照失败: {e}")
+
+
+def _run_chart(user_id: str):
+    """生成走势图并发送到用户"""
+    try:
+        from wecom_app import send_to_user, _get_token, _get_app_config
+        from config import CHART_FILE, HISTORY_FILE
+        import matplotlib
+        matplotlib.use("Agg")
+        from history import plot_history
+        send_to_user(user_id, "📈 正在生成走势图...")
+        plot_history()
+        if CHART_FILE.exists():
+            # Upload image via WeCom API
+            cfg = _get_app_config()
+            token = _get_token()
+            if token:
+                import requests
+                url = f"https://qyapi.weixin.qq.com/cgi-bin/media/upload?access_token={token}&type=image"
+                with open(CHART_FILE, "rb") as f:
+                    resp = requests.post(url, files={"media": (CHART_FILE.name, f, "image/png")}, timeout=30)
+                data = resp.json()
+                if data.get("errcode") == 0:
+                    media_id = data.get("media_id")
+                    # Send as image message
+                    msg_url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}"
+                    payload = {
+                        "touser": user_id,
+                        "msgtype": "image",
+                        "agentid": int(cfg["agentid"]),
+                        "image": {"media_id": media_id},
+                    }
+                    r = requests.post(msg_url, json=payload, timeout=10)
+                    if r.json().get("errcode") == 0:
+                        return
+        send_to_user(user_id, "❌ 生成图表失败，请稍后重试。")
+    except Exception as e:
+        from wecom_app import send_to_user
+        send_to_user(user_id, f"❌ 失败: {e}")
 
 
 def _run_alert(user_id: str):
