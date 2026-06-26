@@ -5,8 +5,11 @@
 
 import os
 import time
+import threading
 import requests
 from pathlib import Path
+
+_token_lock = threading.Lock()
 
 
 def _get_app_config():
@@ -36,22 +39,24 @@ _token_cache = {"token": "", "expires": 0}
 
 
 def _get_token() -> str | None:
-    """获取应用 access_token（自动缓存）"""
+    """获取应用 access_token（线程安全缓存）"""
     cfg = _get_app_config()
     if not cfg:
         return None
 
     now = time.time()
-    if _token_cache["token"] and now < _token_cache["expires"]:
-        return _token_cache["token"]
+    with _token_lock:
+        if _token_cache["token"] and now < _token_cache["expires"]:
+            return _token_cache["token"]
 
     url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={cfg['corpid']}&corpsecret={cfg['secret']}"
     try:
         r = requests.get(url, timeout=10)
         data = r.json()
         if data.get("errcode") == 0:
-            _token_cache["token"] = data["access_token"]
-            _token_cache["expires"] = now + data.get("expires_in", 7200) - 300
+            with _token_lock:
+                _token_cache["token"] = data["access_token"]
+                _token_cache["expires"] = now + data.get("expires_in", 7200) - 300
             return _token_cache["token"]
     except Exception:
         pass

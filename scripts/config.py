@@ -38,23 +38,46 @@ def ensure_finance_dir():
 
 
 # === 文件锁（防止 cron 重叠执行） ===
-LOCK_FILE = FINANCE_DIR / ".runner.lock"
-
+# Linux: fcntl.flock（操作系统管理，进程崩溃自动释放）
+# Windows: 文件 touch/unlink 兜底
+import sys as _sys
+_lock_fd = None
 
 def acquire_lock() -> bool:
     """尝试获取运行锁，返回 True 表示可以继续执行"""
-    if LOCK_FILE.exists():
-        return False
-    LOCK_FILE.touch()
-    return True
+    global _lock_fd
+    if _sys.platform == "linux":
+        import fcntl
+        _lock_fd = open(FINANCE_DIR / ".runner.lock", "w")
+        try:
+            fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except (IOError, OSError):
+            return False
+    else:
+        # Windows 兜底
+        _lock_file = FINANCE_DIR / ".runner.lock"
+        if _lock_file.exists():
+            return False
+        _lock_file.touch()
+        return True
 
 
 def release_lock():
     """释放运行锁"""
-    try:
-        LOCK_FILE.unlink(missing_ok=True)
-    except Exception:
-        pass
+    global _lock_fd
+    if _sys.platform == "linux" and _lock_fd:
+        try:
+            import fcntl
+            fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+            _lock_fd.close()
+        except Exception:
+            pass
+    else:
+        try:
+            (FINANCE_DIR / ".runner.lock").unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 # === 错误日志 ===

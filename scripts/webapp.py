@@ -23,7 +23,15 @@ ensure_finance_dir()
 
 from flask import Flask, render_template, jsonify, request, send_file
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 import json
+
+# 线程池（最多 4 个并发任务，防雪崩）
+_executor = ThreadPoolExecutor(max_workers=4)
+
+# 消息去重（最近 5 分钟的 MsgId）
+_seen_ids = {}
+_dedup_lock = threading.Lock()
 
 app = Flask(__name__,
             template_folder=str(PROJECT_ROOT / "scripts" / "templates"))
@@ -92,6 +100,21 @@ def wecom_callback():
         return "", 200
 
     user_id = from_user.text.strip() if from_user is not None and from_user.text else ""
+
+    # 消息去重（防企微重发）
+    msg_id = msg_xml.find("MsgId")
+    if msg_id is not None and msg_id.text:
+        with _dedup_lock:
+            now = time.time()
+            # 清理超过 5 分钟的旧记录
+            _seen_ids.clear() if now - max(_seen_ids.values() or [0]) > 300 else None
+            if msg_id.text in _seen_ids:
+                return "", 200  # 重复消息，跳过
+            _seen_ids[msg_id.text] = now
+            # 限制缓存大小
+            if len(_seen_ids) > 1000:
+                _seen_ids.clear()
+
     log_error(f"CALLBACK CMD: {msg} from {user_id}")
 
     # 通过应用 API 发回复（比加密 XML 更可靠，支持长文本）
@@ -100,7 +123,7 @@ def wecom_callback():
         def _send(uid, txt):
             from wecom_app import send_to_user
             send_to_user(uid, txt)
-        threading.Thread(target=_send, args=(user_id, reply_text), daemon=True).start()
+        _executor.submit(_send, user_id, reply_text)
         log_error(f"CALLBACK API SENT: {reply_text[:80]}")
 
     return "", 200
@@ -111,23 +134,23 @@ def _handle_command(msg: str, user_id: str = "") -> str:
     msg = msg.strip().lower()
 
     if msg in ("/体检", "/check", "/report", "体检", "月度体检"):
-        threading.Thread(target=_run_checkup, args=(user_id,), daemon=True).start()
+        _executor.submit(_run_checkup, user_id)
         return "✅ 月度体检已启动，1-2 分钟后结果会回到这里。"
     elif msg in ("/快照", "/snapshot", "快照", "市值"):
-        threading.Thread(target=_run_snapshot, args=(user_id,), daemon=True).start()
+        _executor.submit(_run_snapshot, user_id)
         return "✅ 正在拉取最新行情，30 秒内回到这里。"
     elif msg in ("/预警", "/alert", "预警"):
-        threading.Thread(target=_run_alert, args=(user_id,), daemon=True).start()
+        _executor.submit(_run_alert, user_id)
         return "✅ 正在检查持仓波动..."
     elif msg.startswith("/回测") or msg.startswith("/backtest") or msg.startswith("回测"):
         code = msg.split()[-1] if len(msg.split()) > 1 else "510300"
-        threading.Thread(target=_run_backtest, args=(user_id, code), daemon=True).start()
+        _executor.submit(_run_backtest, user_id, code)
         return f"📊 正在回测 {code}..."
     elif msg in ("/fire", "fire", "财务自由", "退休"):
-        threading.Thread(target=_run_fire, args=(user_id,), daemon=True).start()
+        _executor.submit(_run_fire, user_id)
         return "🏝️ 正在计算 FIRE 时间线..."
     elif msg in ("/走势", "/history", "/chart", "走势", "历史"):
-        threading.Thread(target=_run_chart, args=(user_id,), daemon=True).start()
+        _executor.submit(_run_chart, user_id)
         return "✅ 正在生成走势图..."
     elif msg in ("/帮助", "/help", "帮助", "help"):
         return (
@@ -382,11 +405,11 @@ def trigger_action(action: str):
     if action == "snapshot":
         with _lock:
             _jobs[job_id] = {"status": "running", "started": time.time()}
-        threading.Thread(target=_snapshot_job, args=(job_id,), daemon=True).start()
+        _executor.submit(_snapshot_job, job_id)
     else:
         with _lock:
             _jobs[job_id] = {"status": "running", "started": time.time()}
-        threading.Thread(target=_analysis_job, args=(job_id, prompts[action]), daemon=True).start()
+        _executor.submit(_analysis_job, job_id, prompts[action])
     return jsonify({"job_id": job_id, "status": "accepted"})
 
 
