@@ -90,7 +90,7 @@ def wecom_callback():
         event_key = msg_xml.find("EventKey")
         if event_el is not None and event_el.text == "click" and event_key is not None:
             key = event_key.text
-            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助", "CHART": "/走势", "FIRE": "/fire", "BACKTEST": "/回测 510300"}
+            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助", "CHART": "/走势", "FIRE": "/fire", "BACKTEST": "/回测 510300", "HEALTH": "/健康"}
             msg = cmd_map.get(key, "/帮助")
         else:
             return "", 200
