@@ -30,9 +30,8 @@ menu = {
             ],
         },
         {
-            "name": "⚙️ 系统",
+            "name": "⚙️ 更多",
             "sub_button": [
-                {"name": "🏥 健康检查", "type": "click", "key": "HEALTH"},
                 {"name": "❓ 使用帮助", "type": "click", "key": "HELP"},
             ],
         },
