@@ -404,6 +404,12 @@ def api_snapshot():
 
 # ── 手机控制台 (保留作为备用触发方式) ──────────────────
 
+@app.route("/home")
+def parents_view():
+    """爸妈专用——只读看板，大字体，无操作"""
+    return render_template("parents.html", now=datetime.now())
+
+
 @app.route("/control")
 def control_panel():
     return render_template("control.html", now=datetime.now())
