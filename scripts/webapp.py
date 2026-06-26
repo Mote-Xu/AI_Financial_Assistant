@@ -375,7 +375,7 @@ def dashboard():
 
 @app.route("/history")
 def history_page():
-    from scripts.webapp_helpers import _history_summary
+    from webapp_helpers import _history_summary
     try:
         from history import plot_history
         import matplotlib
@@ -398,7 +398,7 @@ def chart_image():
 
 @app.route("/api/snapshot")
 def api_snapshot():
-    from scripts.webapp_helpers import _parse_snapshot
+    from webapp_helpers import _parse_snapshot
     return jsonify(_parse_snapshot())
 
 
