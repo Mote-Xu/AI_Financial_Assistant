@@ -82,7 +82,7 @@ def wecom_callback():
         event_key = msg_xml.find("EventKey")
         if event_el is not None and event_el.text == "click" and event_key is not None:
             key = event_key.text
-            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助", "CHART": "/走势"}
+            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助", "CHART": "/走势", "FIRE": "/fire"}
             msg = cmd_map.get(key, "/帮助")
         else:
             return "", 200
@@ -119,6 +119,9 @@ def _handle_command(msg: str, user_id: str = "") -> str:
     elif msg in ("/预警", "/alert", "预警"):
         threading.Thread(target=_run_alert, args=(user_id,), daemon=True).start()
         return "✅ 正在检查持仓波动..."
+    elif msg in ("/fire", "fire", "财务自由", "退休"):
+        threading.Thread(target=_run_fire, args=(user_id,), daemon=True).start()
+        return "🏝️ 正在计算 FIRE 时间线..."
     elif msg in ("/走势", "/history", "/chart", "走势", "历史"):
         threading.Thread(target=_run_chart, args=(user_id,), daemon=True).start()
         return "✅ 正在生成走势图..."
@@ -129,6 +132,7 @@ def _handle_command(msg: str, user_id: str = "") -> str:
             "· /快照 — 最新市值\n"
             "· /预警 — 波动检查\n"
             "· /走势 — 净值图表\n"
+            "· /fire — 财务自由推算\n"
             "· /帮助 — 菜单"
         )
     else:
@@ -198,6 +202,23 @@ def _run_snapshot(user_id: str):
             send_to_user(user_id, f"❌ 快照失败: {e}")
         from config import log_error
         log_error(f"快照失败: {e}")
+
+
+def _run_fire(user_id: str):
+    """运行 FIRE 模拟"""
+    try:
+        from wecom_app import send_to_user
+        from fire_simulator import simulate, format_report
+        send_to_user(user_id, "🏝️ 正在分析你的财务自由路径...")
+        result = simulate()
+        report = format_report(result)
+        send_to_user(user_id, report)
+    except Exception as e:
+        if user_id:
+            from wecom_app import send_to_user
+            send_to_user(user_id, f"❌ FIRE 计算失败: {e}")
+        from config import log_error
+        log_error(f"FIRE failed: {e}")
 
 
 def _run_chart(user_id: str):
