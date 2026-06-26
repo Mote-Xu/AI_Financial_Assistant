@@ -153,11 +153,11 @@ def main():
     results, all_ok = run_all()
     print(format_report(results, all_ok))
 
-    # 异常时推送告警
+    # 异常时推送告警到应用私聊（不走群 webhook）
     if not all_ok:
         try:
-            from wecom_push import push_wecom
-            push_wecom(format_report(results, all_ok))
+            from wecom_app import send_to_user
+            send_to_user("XuZiHao", format_report(results, all_ok))
         except Exception:
             pass
 
