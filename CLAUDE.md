@@ -108,8 +108,8 @@ python scripts/webapp.py --prod                  # Flask Dashboard (生产)
 
 ## 下一步
 
-1. ~~企微文件直发~~ ✅ `push_file()` 上传 → media_id → 文件消息，手机直接打开
-2. ~~代码与数据分离~~ ✅ `config.py` + `FINANCE_DATA_DIR` 环境变量切换，repo public 安全
-3. Flask Web Dashboard + cloudflared tunnel
-4. 企微双向互动（@机器人）
-5. Ubuntu 24/7 部署（cron）
+1. ~~企微文件直发~~ ✅
+2. ~~代码与数据分离~~ ✅
+3. ~~Flask Dashboard + 企微回调~~ ✅ 手机企微 @机器人 触发分析
+4. ~~Ubuntu 24/7 部署~~ ✅ mote-home 服务器，systemd + cron + HA tunnel
+5. FIRE 模拟器 / 定投回测
