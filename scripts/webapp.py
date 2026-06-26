@@ -184,6 +184,12 @@ def _run_checkup(user_id: str):
             send_to_user(user_id, "🤖 正在 AI 分析（约需 1 分钟）...")
         prompt = load_file("prompts/monthly_review.md")
         context = build_context()
+        from deepseek_analysis import validate_context
+        valid, reason = validate_context(context)
+        if not valid:
+            if user_id:
+                send_to_user(user_id, f"⚠️ 数据校验未通过：{reason}\n请先运行 /快照 更新行情。")
+            return
         result = call_deepseek(prompt, context)
 
         # 保存报告

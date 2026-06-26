@@ -71,6 +71,31 @@ def build_context(
     return "\n".join(sections)
 
 
+def validate_context(context: str) -> tuple[bool, str]:
+    """
+    数据校验阀 — 分析前检查数据完整性，脏数据不喂给 LLM
+    返回 (是否通过, 原因)
+    """
+    if not context or len(context) < 200:
+        return False, "上下文过短（<200 字符），数据可能缺失"
+
+    # 关键字段检查
+    required_fields = [
+        ("总市值", "资产数据"),
+        ("持仓", "持仓数据"),
+        ("月收入", "收入数据"),
+    ]
+    for field, label in required_fields:
+        if field not in context:
+            return False, f"缺少{label}（未找到「{field}」）"
+
+    # 检查快照数据格式
+    if "portfolio_snapshot.md" not in context:
+        return False, "缺少市值快照"
+
+    return True, "ok"
+
+
 def call_deepseek(prompt: str, context: str, api_key: str = None, base_url: str = None) -> str:
     """调用 DeepSeek API 进行分析"""
     api_key = api_key or os.environ.get("DEEPSEEK_API_KEY")
