@@ -453,8 +453,8 @@ def push_briefing(data: dict, midday: bool = False):
             print("📱 企微 Markdown 推送完成")
         else:
             # 兜底：用 webhook
-            from wecom_push import push_markdown
-            push_markdown(message)
+            from wecom_push import push_wecom
+            push_wecom(message)
             print("📱 企微 Webhook 推送完成")
     except Exception as e:
         log_error(f"Briefing push failed: {e}")
