@@ -8,8 +8,10 @@ import json
 from pathlib import Path
 from datetime import datetime
 
+import os
 PROJECT_ROOT = Path(__file__).parent.parent
-FAMILY_DIR = PROJECT_ROOT / "family"
+_family_env = os.getenv("FINANCE_FAMILY_DIR", "")
+FAMILY_DIR = Path(_family_env) if _family_env else (PROJECT_ROOT / "family_demo")
 MEMBERS_DIR = FAMILY_DIR / "members"
 HOUSEHOLD_DIR = FAMILY_DIR / "household"
 REPORTS_DIR = FAMILY_DIR / "reports"

@@ -1,0 +1,35 @@
+{
+  "name": "徐家财务",
+  "currency": "CNY",
+  "members": {
+    "me": {
+      "name": "子浩",
+      "role": "student",
+      "admin": false,
+      "income_visible_to": []
+    },
+    "dad": {
+      "name": "爸爸",
+      "role": "earner",
+      "admin": true,
+      "income_visible_to": ["dad"]
+    },
+    "mom": {
+      "name": "妈妈",
+      "role": "earner",
+      "admin": true,
+      "income_visible_to": ["mom"]
+    }
+  },
+  "household": {
+    "shared_assets": ["household/property.md"],
+    "shared_goals": ["household/goals.md"],
+    "emergency_fund_target": 12
+  },
+  "visibility": {
+    "self_detail": true,
+    "household_summary": true,
+    "others_detail": false,
+    "risk_alerts": true
+  }
+}
