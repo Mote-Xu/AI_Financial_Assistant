@@ -90,7 +90,7 @@ def wecom_callback():
         event_key = msg_xml.find("EventKey")
         if event_el is not None and event_el.text == "click" and event_key is not None:
             key = event_key.text
-            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助", "CHART": "/走势", "FIRE": "/fire", "BACKTEST": "/回测 510300", "HEALTH": "/健康", "FAMILY": "/家庭体检"}
+            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助", "CHART": "/走势", "FIRE": "/fire", "BACKTEST": "/回测 510300", "HEALTH": "/健康", "FAMILY": "/家庭体检", "BRIEFING": "/简报"}
             msg = cmd_map.get(key, "/帮助")
         else:
             return "", 200
@@ -167,10 +167,18 @@ def _handle_command(msg: str, user_id: str = "") -> str:
             "· /走势 — 净值图表\n"
             "· /fire — 财务自由推算\n"
             "· /回测 510300 — 定投回测\n"
+            "· /简报 — 今日情报简报\n"
             "· /健康 — 系统体检\n"
             "· /家庭体检 — 全家分析\n"
             "· /帮助 — 菜单"
         )
+    elif msg in ("/简报", "/briefing", "简报", "情报"):
+        _executor.submit(_run_briefing, user_id)
+        return "🔍 正在整理今日情报简报，1-2 分钟后推送..."
+    elif msg.startswith("/简报") and ("--refresh" in msg or "--刷新" in msg):
+        _executor.submit(_run_briefing_refresh, user_id)
+        return "🔄 正在重新生成情报简报，约需 1-2 分钟..."
+    elif msg in ("/帮助", "/help", "帮助", "help"):
     else:
         return f"未识别「{msg}」，/帮助 查看命令。"
 
@@ -298,6 +306,61 @@ def _run_health(user_id: str):
         if user_id:
             from wecom_app import send_to_user
             send_to_user(user_id, f"❌ 健康检查失败: {e}")
+
+
+def _run_briefing(user_id: str):
+    """后台运行情报简报（使用缓存）"""
+    try:
+        from wecom_app import send_to_user
+        from intelligence_engine import load_briefing_cache, get_pushable_briefs
+
+        cached = load_briefing_cache()
+        if cached:
+            # 使用缓存
+            briefs = get_pushable_briefs(cached)
+            top_briefs = sorted(briefs, key=lambda b: b.get("push_score", 0), reverse=True)[:3]
+
+            if top_briefs:
+                lines = ["📰 今日情报简报", f"> {cached.get('overall_summary', '')}", ""]
+                for b in top_briefs:
+                    action_emoji = {"act": "🔴", "prepare": "🟡", "watch": "🟢", "ignore": "⚪"}
+                    emoji = action_emoji.get(b.get("actionability", "watch"), "⚪")
+                    lines.append(f"{emoji} **{b.get('title', '')}**")
+                    if b.get("summary"):
+                        lines.append(f"  {b['summary'][:200]}")
+                    if b.get("suggested_action"):
+                        lines.append(f"  💡 {b['suggested_action']}")
+                    lines.append("")
+                lines.append("📱 [查看完整看板](https://finance-assistant.mote-pal.xyz/family)")
+                send_to_user(user_id, "\n".join(lines))
+            else:
+                send_to_user(user_id, "📭 今日暂无重要情报，请保持定力。")
+        else:
+            # 无缓存，异步生成
+            send_to_user(user_id, "🔍 正在整理今日情报，约需 1-2 分钟，稍后推送...")
+            from intelligence_engine import generate_briefing
+            generate_briefing(refresh=False, midday=False, no_push=False)
+    except Exception as e:
+        if user_id:
+            from wecom_app import send_to_user
+            send_to_user(user_id, f"❌ 简报获取失败: {e}")
+        from config import log_error
+        log_error(f"Briefing command failed: {e}")
+
+
+def _run_briefing_refresh(user_id: str):
+    """强制刷新情报简报"""
+    try:
+        from wecom_app import send_to_user
+        send_to_user(user_id, "🔄 正在重新整理今日情报，约需 1-2 分钟...")
+        from intelligence_engine import generate_briefing
+        generate_briefing(refresh=True, midday=False, no_push=False)
+    except Exception as e:
+        if user_id:
+            from wecom_app import send_to_user
+            send_to_user(user_id, f"❌ 简报刷新失败: {e}")
+        from config import log_error
+        log_error(f"Briefing refresh failed: {e}")
 
 
 def _run_family_checkup(user_id: str):
@@ -572,6 +635,54 @@ def _analysis_job(job_id, prompt):
 def api_jobs():
     with _lock:
         return jsonify(_jobs)
+
+
+# ── Intelligence Briefing ────────────────────────────────
+
+@app.route("/api/briefing")
+def api_briefing():
+    """获取今日情报简报 JSON"""
+    from intelligence_engine import load_briefing_cache, get_pushable_briefs
+    cached = load_briefing_cache()
+    if not cached:
+        return jsonify({"error": "今日简报尚未生成", "status": "empty"}), 404
+    briefs = get_pushable_briefs(cached)
+    return jsonify({
+        "date": cached.get("date", ""),
+        "generated_at": cached.get("cached_at", ""),
+        "news_count": cached.get("news_count", 0),
+        "analyzed_count": cached.get("analyzed_count", 0),
+        "briefs": briefs,
+        "sentiment": {
+            "macro": cached.get("macro_sentiment", "neutral"),
+            "equity": cached.get("equity_sentiment", "neutral"),
+            "bond": cached.get("bond_sentiment", "neutral"),
+            "housing": cached.get("housing_sentiment", "neutral"),
+        },
+        "overall_summary": cached.get("overall_summary", ""),
+        "midday_updated": cached.get("midday_updated"),
+    })
+
+
+@app.route("/trigger/briefing", methods=["POST"])
+def trigger_briefing():
+    """触发简报生成"""
+    job_id = f"briefing_{datetime.now().strftime('%H%M%S')}"
+    with _lock:
+        _jobs[job_id] = {"status": "running", "started": time.time()}
+    _executor.submit(_briefing_job, job_id)
+    return jsonify({"job_id": job_id, "status": "accepted"})
+
+
+def _briefing_job(job_id):
+    try:
+        from intelligence_engine import generate_briefing
+        import json as _json
+        result = generate_briefing(refresh=True, midday=False, no_push=False)
+        brief_count = len(result.get("briefs", []))
+        _jobs[job_id] = {"status": "done", "result": f"生成了 {brief_count} 条简报"}
+    except Exception as e:
+        _jobs[job_id] = {"status": "error", "result": str(e)}
 
 
 # ── Main ─────────────────────────────────────────────────

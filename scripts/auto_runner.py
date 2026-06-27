@@ -112,11 +112,17 @@ def run_analysis(prompt_name: str = "monthly_review"):
 def main():
     prompt_name = "monthly_review"
     run_alert = False
+    run_briefing_mode = False
+    briefing_midday = False
     if "--prompt" in sys.argv:
         idx = sys.argv.index("--prompt")
         prompt_name = sys.argv[idx + 1]
     if "--alert" in sys.argv:
         run_alert = True
+    if "--briefing" in sys.argv:
+        run_briefing_mode = True
+    if "--midday" in sys.argv:
+        briefing_midday = True
 
     # 初始化 + 文件锁
     ensure_finance_dir()
@@ -125,17 +131,26 @@ def main():
         sys.exit(0)
 
     try:
-        _main(prompt_name, run_alert)
+        _main(prompt_name, run_alert, run_briefing_mode, briefing_midday)
     finally:
         release_lock()
 
 
-def _main(prompt_name: str, run_alert: bool):
+def _main(prompt_name: str, run_alert: bool, run_briefing_mode: bool = False, briefing_midday: bool = False):
     print(f"\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 开始自动运行")
-    print(f"   模式: {'预警' if run_alert else '分析'}")
 
-    # 预警模式：只查波动
+    # 简报模式
+    if run_briefing_mode:
+        print(f"   模式: {'午间简报补充' if briefing_midday else '每日情报简报'}")
+        from intelligence_engine import generate_briefing
+        result = generate_briefing(refresh=False, midday=briefing_midday, no_push=False)
+        brief_count = len(result.get("briefs", []))
+        print(f"\n✅ 简报完成：{brief_count} 条分析 — {datetime.now().strftime('%H:%M:%S')}")
+        return
+
+    # 预警模式
     if run_alert:
+        print(f"   模式: 预警")
         from market_alert import check_alerts, push_alerts
         alerts = check_alerts(threshold=3.0)
         if alerts:
@@ -144,6 +159,7 @@ def _main(prompt_name: str, run_alert: bool):
         return
 
     # 完整模式：行情 + 分析 + 推送
+    print(f"   模式: 分析（{prompt_name}）")
     snapshot = run_market_data()
     if snapshot is None:
         print("❌ 行情获取失败，终止")

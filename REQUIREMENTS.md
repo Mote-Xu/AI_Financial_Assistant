@@ -53,9 +53,29 @@
 - [x] **家庭网页看板**：All-in-one dashboard (/family)
 - [x] **爸妈微信看板**：只读 + 体检按钮 (/home)
 
-## P6 — 下一阶段
+## P6 — 下一阶段（grill-me 2026-06-27 确立）
 
-- [ ] **外部情报系统**：每日市场+政策简报 + AI 家庭相关性过滤 + 追问
+### P6-1 外部情报系统 v1 🔨 本次
+
+- [ ] **数据源**：CLS 财联社电报 + NewsAPI + akshare macro_china（主力）；THS 全球财经（补充）
+- [ ] **两阶段过滤**：阶段 1 结构化规则粗筛（去重+去噪音），阶段 2 DeepSeek 摘要+推理+评分
+- [ ] **三通道入阶段 2**：🅰️宏观必过 🅱️画像命中（信号增强） 🅲️LLM 自行判断
+- [ ] **输出结构化 JSON**：含 category/tags/confidence(1-10)/relevance(0-10)/actionability(4级)/impacted_assets/impacted_members/time_horizon/duplicate_group
+- [ ] **综合评分推送**：Score = 0.45×relevance + 0.35×actionability + 0.20×confidence，≥8 推企微
+- [ ] **调度**：早间 08:30 全量 + 午间 12:30 轻量（仅 `act` 级）
+- [ ] **双通道展示**：企微推送 Top 3 + 家庭看板全部浏览
+- [ ] **企微命令**：`/简报`（缓存秒回）+ `/简报 --刷新`（异步重新生成）
+- [ ] **sentiment 拆分**：macro/equity/bond/housing 四类
+
+### P6-1 外部情报系统 v2 📋 后续
+
+- [ ] **事件聚类引擎**：TF-IDF + cosine similarity 自动去重，独立于 LLM
+- [ ] **追问功能**：看板输入框 + DeepSeek 带简报上下文回答
+- [ ] **画像自动更新**：DeepSeek 定期从持仓变动中更新 intelligence_profile
+- [ ] **信源扩展**：国务院/央行/财政部公告 + ETF 公告
+
+### P6-2 ~ P6-4
+
 - [ ] **FIRE 蒙特卡洛**：随机模拟升级
 - [ ] **定投回测参数化**：`/回测 510300 2000 5年`
 - [ ] **预警阈值差异化**：按资产类型

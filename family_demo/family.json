@@ -31,5 +31,12 @@
     "household_summary": true,
     "others_detail": false,
     "risk_alerts": true
+  },
+  "intelligence_profile": {
+    "holdings": ["510300", "510500", "588000", "600036", "600519", "000001", "159915", "518880"],
+    "sectors": ["银行", "白酒", "科技", "新能源", "半导体", "医药"],
+    "asset_classes": ["A股", "基金", "ETF", "房产", "黄金"],
+    "concerns": ["房贷利率", "LPR", "个人所得税", "教育政策", "养老金", "医保"],
+    "keywords_blacklist": ["比特币", "NFT", "元宇宙", "Web3", "虚拟货币"]
   }
 }

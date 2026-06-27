@@ -68,22 +68,74 @@
 
         async function load() {
             try {
-                const r = await fetch(API);
+                const [r, br] = await Promise.all([
+                    fetch(API),
+                    fetch('/api/briefing').catch(() => null)
+                ]);
                 const d = await r.json();
                 if (d.error) throw new Error(d.error);
-                render(d);
+
+                let briefing = null;
+                if (br && br.ok) {
+                    try { briefing = await br.json(); } catch(e) {}
+                }
+                render(d, briefing);
             } catch(e) {
                 document.getElementById('app').innerHTML = `<div class="loader">加载失败: ${e.message}<br><button class="btn btn-blue" onclick="load()" style="margin-top:1rem;width:auto;display:inline-block">重试</button></div>`;
             }
         }
 
-        function render(d) {
+        function render(d, briefing) {
             const s = d.summary;
             const mb = d.members;
             const hh = d.household;
             const alerts = d.alerts;
 
             let alertHtml = alerts.length ? alerts.map(a => `<div class="alert-item">${a}</div>`).join('') : '<div class="alert-item" style="color:#16a34a">✅ 无异常</div>';
+
+            // ── Briefing Card ──
+            let briefingHtml = '';
+            if (briefing && briefing.briefs && briefing.briefs.length > 0) {
+                const actionEmoji = {act:'🔴',prepare:'🟡',watch:'🟢',ignore:'⚪'};
+                const sentimentEmoji = {bullish:'📈',neutral:'➡️',bearish:'📉'};
+                const topBriefs = briefing.briefs
+                    .filter(b => b.should_push || b.actionability !== 'ignore')
+                    .slice(0, 5);
+
+                const briefItems = topBriefs.map(b => `
+                    <div class="alert-item" style="display:flex;gap:0.5rem;align-items:flex-start">
+                        <span style="flex-shrink:0">${actionEmoji[b.actionability]||'⚪'}</span>
+                        <div style="flex:1">
+                            <div style="font-weight:600;font-size:0.82rem">${b.title||''}</div>
+                            <div style="font-size:0.75rem;color:#666;margin-top:0.15rem">${(b.summary||'').substring(0,150)}</div>
+                            ${b.impacted_assets&&b.impacted_assets.length ? `<div style="font-size:0.7rem;color:#888;margin-top:0.2rem">🎯 ${b.impacted_assets.join('·')}</div>` : ''}
+                        </div>
+                    </div>`).join('');
+
+                const sentiments = briefing.sentiment || {};
+                const sentTags = [
+                    `股市${sentimentEmoji[sentiments.equity]||'➡️'}`,
+                    `宏观${sentimentEmoji[sentiments.macro]||'➡️'}`,
+                    `债市${sentimentEmoji[sentiments.bond]||'➡️'}`,
+                    `楼市${sentimentEmoji[sentiments.housing]||'➡️'}`,
+                ].join(' · ');
+
+                briefingHtml = `
+                <div class="card" style="border:1px solid #e2e8f0">
+                    <h2>📰 今日情报 <span class="tag ${briefing.briefs.some(b=>b.actionability==='act')?'tag-red':'tag-green'}">${briefing.briefs.length}条</span></h2>
+                    <div style="font-size:0.75rem;color:#888;margin-bottom:0.5rem">${sentTags}</div>
+                    ${briefItems}
+                    <div style="font-size:0.7rem;color:#999;margin-top:0.5rem;text-align:right">
+                        ${briefing.overall_summary||''}
+                        ${briefing.midday_updated ? '<br>🕐 午间已更新' : ''}
+                    </div>
+                </div>`;
+            } else if (briefing && briefing.status === 'empty') {
+                briefingHtml = `
+                <div class="card" style="border:1px solid #e2e8f0;text-align:center;color:#999;padding:1.5rem">
+                    📭 今日简报尚未生成
+                </div>`;
+            }
 
             let membersHtml = Object.entries(mb).map(([id, m]) => {
                 let incStr = m.monthly_income ? `月入 ¥${(m.monthly_income/1000).toFixed(1)}k` : '';
@@ -118,6 +170,8 @@
                     <div class="item"><div class="val">${s.savings_rate}%</div><div class="lbl">储蓄率</div></div>
                 </div>
             </div>
+
+            ${briefingHtml}
 
             <div class="card">
                 <h2>👨‍👩‍👦 家庭成员 <span class="tag tag-green">${Object.keys(mb).length}人</span></h2>

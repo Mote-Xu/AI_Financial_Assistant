@@ -125,3 +125,22 @@ SNAPSHOT_FILE = FINANCE_DIR / "portfolio_snapshot.md"
 HISTORY_FILE = FINANCE_DIR / "history.csv"
 DB_PATH = FINANCE_DIR / "finance_data.db"
 CHART_FILE = FINANCE_DIR / "history_chart.png"
+
+# === 外部情报 ===
+INTELLIGENCE_DIR = FINANCE_DIR / "intelligence"
+BRIEFING_CACHE = INTELLIGENCE_DIR / "briefing_cache.json"
+BRIEFING_HISTORY = INTELLIGENCE_DIR / "briefing_history.jsonl"
+RAW_NEWS_CACHE = INTELLIGENCE_DIR / "raw_news_cache.json"
+NEWSAPI_KEY = os.environ.get("NEWSAPI_KEY", "")
+
+# 家庭版配置目录（通过 FINANCE_FAMILY_DIR 或从 FINANCE_DIR 推导）
+_FAMILY_ENV = os.getenv("FINANCE_FAMILY_DIR", "")
+if _FAMILY_ENV:
+    FAMILY_DIR = Path(_FAMILY_ENV).expanduser().resolve()
+else:
+    _family_candidate = FINANCE_DIR.parent / "family_demo"
+    if _family_candidate.exists():
+        FAMILY_DIR = _family_candidate
+    else:
+        FAMILY_DIR = PROJECT_ROOT / "family_demo"
+FAMILY_CONFIG = FAMILY_DIR / "family.json"
