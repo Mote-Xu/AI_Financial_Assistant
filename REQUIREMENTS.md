@@ -55,17 +55,18 @@
 
 ## P6 — 下一阶段（grill-me 2026-06-27 确立）
 
-### P6-1 外部情报系统 v1 🔨 本次
+### P6-1 外部情报系统 v1 ✅ (2026-06-27)
 
-- [ ] **数据源**：CLS 财联社电报 + NewsAPI + akshare macro_china（主力）；THS 全球财经（补充）
-- [ ] **两阶段过滤**：阶段 1 结构化规则粗筛（去重+去噪音），阶段 2 DeepSeek 摘要+推理+评分
-- [ ] **三通道入阶段 2**：🅰️宏观必过 🅱️画像命中（信号增强） 🅲️LLM 自行判断
-- [ ] **输出结构化 JSON**：含 category/tags/confidence(1-10)/relevance(0-10)/actionability(4级)/impacted_assets/impacted_members/time_horizon/duplicate_group
-- [ ] **综合评分推送**：Score = 0.45×relevance + 0.35×actionability + 0.20×confidence，≥8 推企微
-- [ ] **调度**：早间 08:30 全量 + 午间 12:30 轻量（仅 `act` 级）
-- [ ] **双通道展示**：企微推送 Top 3 + 家庭看板全部浏览
-- [ ] **企微命令**：`/简报`（缓存秒回）+ `/简报 --刷新`（异步重新生成）
-- [ ] **sentiment 拆分**：macro/equity/bond/housing 四类
+- [x] **数据源**：CLS 财联社电报 + NewsAPI + akshare macro_china（主力）；THS 全球财经（补充）
+- [x] **两阶段过滤**：阶段 1 结构化规则粗筛（去重+去噪音），阶段 2 DeepSeek 摘要+推理+评分
+- [x] **三通道入阶段 2**：🅰️宏观必过 🅱️画像命中（信号增强） 🅲️LLM 自行判断
+- [x] **输出结构化 JSON**：含 category/tags/confidence(1-10)/relevance(0-10)/actionability(4级)/impacted_assets/impacted_members/time_horizon/duplicate_group
+- [x] **综合评分推送**：Score = 0.45×relevance + 0.35×actionability + 0.20×confidence，≥8 推企微
+- [x] **调度**：早间 08:30 全量 + 午间 12:30 轻量（仅 `act` 级）
+- [x] **双通道展示**：企微推送 Top 3 + 家庭看板全部浏览
+- [x] **企微命令**：`/简报`（缓存秒回）+ `/简报 --刷新`（异步重新生成）
+- [x] **sentiment 拆分**：macro/equity/bond/housing 四类
+- [x] **部署**：服务器 cron + finance-flask 重启 + 企微菜单更新 ✅
 
 ### P6-1 外部情报系统 v2 📋 后续
 
@@ -74,11 +75,11 @@
 - [ ] **画像自动更新**：DeepSeek 定期从持仓变动中更新 intelligence_profile
 - [ ] **信源扩展**：国务院/央行/财政部公告 + ETF 公告
 
-### P6-2 ~ P6-4
+### P6-2 ~ P6-4 ✅ (2026-06-27)
 
-- [ ] **FIRE 蒙特卡洛**：随机模拟升级
-- [ ] **定投回测参数化**：`/回测 510300 2000 5年`
-- [ ] **预警阈值差异化**：按资产类型
+- [x] **FIRE 蒙特卡洛**：10,000 次随机模拟，三情景（bear/base/bull），概率分位数输出
+- [x] **定投回测参数化**：`/回测 [代码] [金额] [年数]`，支持 510300/2000/5年 等格式
+- [x] **预警阈值差异化**：ETF 宽基 3% / ETF 行业 4% / 个股 5% / 基金 2%，严重度分级
 
 ## 非功能需求 ✅
 

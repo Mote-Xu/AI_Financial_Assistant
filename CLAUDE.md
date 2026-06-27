@@ -129,23 +129,23 @@ python scripts/family_engine.py                  # 家庭数据引擎
 
 ## 待完成
 
-### 🔨 外部情报系统 v1（grill-me 2026-06-27 确立）
+### ✅ 外部情报系统 v1（2026-06-27 完成）
 
 **数据源**：CLS 财联社电报 + NewsAPI + akshare macro_china（主力）；THS 全球财经（补充）
 **过滤**：两阶段 — 阶段 1 结构化规则粗筛 → 阶段 2 DeepSeek 摘要+推理+评分
-**三通道入 LLM**：🅰️宏观必过 🅱️画像命中 🅲️LLM 自行判断
-**输出**：结构化 JSON（category/tags/confidence 1-10/relevance 0-10/actionability 4级/impacted_assets/time_horizon/duplicate_group）
 **推送**：Score = 0.45×relevance + 0.35×actionability + 0.20×confidence，≥8 推企微
 **调度**：早间 08:30 全量 + 午间 12:30 轻量（仅 `act` 级）
 **企微**：`/简报`（缓存秒回）+ `/简报 --refresh`（异步重新生成）
 **看板**：家庭看板嵌入简报卡片，可浏览全部
 
+### ✅ FIRE 蒙特卡洛 + 定投回测 + 预警阈值（2026-06-27 完成）
+- FIRE: 10,000 次 Monte Carlo，三情景 bear/base/bull，概率分位数
+- 回测: `/回测 [代码] [金额] [年数]` 参数化
+- 预警: ETF 宽基 3% / ETF 行业 4% / 个股 5% / 基金 2%
+
 ### 📋 后续
 
 - 外部情报 v2：事件聚类引擎 + 追问功能 + 画像自动更新 + 信源扩展
-- FIRE 蒙特卡洛模拟升级
-- 定投回测参数化交互（`/回测 510300 2000 5年`）
-- 预警阈值差异化（按资产类型）
 
 详见 REQUIREMENTS.md P6。
 
