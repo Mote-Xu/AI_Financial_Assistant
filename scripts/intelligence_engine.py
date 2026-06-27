@@ -407,15 +407,20 @@ def push_briefing(data: dict, midday: bool = False):
         push_items = [b for b in briefs if b.get("actionability") == "act"]
         title = "🔔 午间紧急情报"
     else:
-        # 早间推 top 3
-        top_ids = data.get("top_brief_ids", [])
-        if top_ids:
-            id_map = {b.get("id"): b for b in briefs}
-            push_items = [id_map[bid] for bid in top_ids if bid in id_map]
-        else:
-            # 按推送分数排序取前 3
-            scored = sorted(briefs, key=lambda b: b.get("push_score", 0), reverse=True)
-            push_items = scored[:3]
+        # 早间：按推送分数排序，去重（同事件只取最高分），过滤低分
+        scored = sorted(briefs, key=lambda b: calculate_push_score(b), reverse=True)
+        seen_groups = set()
+        candidates = []
+        for b in scored:
+            # 去重：同一 duplicate_group 只取第一条（最高分）
+            group = b.get("duplicate_group") or b.get("id")
+            if group in seen_groups:
+                continue
+            seen_groups.add(group)
+            # 过滤低分
+            if should_push(b):
+                candidates.append(b)
+        push_items = candidates[:3]
         title = "📰 每日情报简报"
 
     if not push_items:
