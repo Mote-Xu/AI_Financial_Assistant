@@ -1,101 +1,65 @@
-# AI 财务助手 — 项目全貌 + 请求验证
+# AI 财务助手 — 家庭版设计咨询
 
 > 发给外部 AI（Gemini/ChatGPT）。
 > 最后更新：2026-06-27
 
 ---
 
-## 项目定位
+## 当前状态
 
-**个人私有 AI 财务大脑**——手机企微就是界面，看不见的自动化在背后跑。
+个人版已完成并稳定运行：
 
-不需要网页、不需要 App、不需要登录。打开企微点按钮，分析结果直接回到同一对话。
-
----
-
-## 完整功能矩阵
-
-| 触发方式 | 功能 | 耗时 |
-|---------|------|------|
-| 📱 企微菜单 `/快照` | 实时行情 → 持仓市值+盈亏表 | ~30s |
-| 📱 企微菜单 `/体检` | DeepSeek AI 全面分析（配置+风险+建议） | 1-2min |
-| 📱 企微菜单 `/fire` | FIRE 财务自由：当前距 FI 多少年 | ~3s |
-| 📱 企微菜单 `/回测 510300` | 历史定投回测：CAGR/回撤/策略对比 | ~15s |
-| 📱 企微菜单 `/预警` | 持仓波动检测，超阈值推送 | ~10s |
-| 📱 企微菜单 `/走势` | 历史净值走势图（图片直发） | ~10s |
-| ⏰ cron 14:45 | 自动执行完整体检 | — |
-| ⏰ cron 14:55 | 自动执行波动预警 | — |
+- ✅ 企微自建应用（菜单+命令+同会话回复）
+- ✅ 8 个命令：快照 / 体检 / 预警 / FIRE / 回测 / 走势 / 健康 / 帮助
+- ✅ DeepSeek AI 分析
+- ✅ akshare 实时行情
+- ✅ SQLite 存储 + 每日加密备份
+- ✅ Ubuntu 24/7 服务器（systemd+cron+fcntl 文件锁+线程池+MsgId 去重）
+- ✅ 代码数据分离（FINANCE_DATA_DIR 环境变量）
+- ✅ 爸妈微信看板（/home 页面，微信内打开即可看）
+- ✅ 健康检查 每天 9:00 自动推送
 
 ---
 
-## 架构
+## 下一步：家庭版财务分析
+
+### 需求
+
+**以家庭为整体，每个成员保持独立财务数据，同时生成家庭汇总视图。**
+
+具体：
+1. 我、爸爸、妈妈各自有独立的 `assets.md`、`income.md`、`insurance.md`
+2. 家庭汇总：合并总资产、合并现金流、家庭保障缺口（谁没投保？）
+3. 分析报告：月体检从"我个人"升级为"全家资产配置+现金流+风险"
+4. 爸妈微信只看到汇总和自己那部分
+
+### 初步设想的数据结构
 
 ```
-手机企微
-  ↓ HTTPS (AES-256-CBC encrypted XML)
-Cloudflare Tunnel (ff961b4a)
-  ↓ HA: Windows + Ubuntu 双活
-Flask (waitress, :5000)
-  ↓ decrypt → route → background thread (max 4)
-  ├─ market_data.py  → akshare (eastmoney/Sina 双源)
-  ├─ deepseek_analysis.py → DeepSeek API
-  ├─ fire_simulator.py     → 4% 规则计算
-  ├─ backtest.py           → 历史定投回测
-  └─ wecom_app.py          → 企微 API → 用户手机
-      └─ SQLite (WAL, timeout=30s)
+family/
+  members.json          ← 定义成员 {me, dad, mom}
+  me/
+    assets.md           ← 我的数据（已有）
+    income.md
+    insurance.md
+  dad/
+    assets.md           ← 爸爸的数据
+    income.md
+    insurance.md
+  mom/
+    assets.md           ← 妈妈的数据
+    income.md
+    insurance.md
+  _family/
+    snapshot.md         ← 自动汇总
+    analysis_*.md       ← 家庭分析报告
 ```
 
----
+### 请求建议
 
-## 请求验证
-
-**请验证以下声明的正确性，指出错误或夸大之处，并给出改进建议。**
-
-### 声明 1: 创新点
-
-1. **企微即界面** — 不用网页/App，企微自建应用就是控制台。菜单+文字命令+图片回复一套闭环
-2. **分析-推送同会话返回** — 结果直接回到同一对话，不需要"发命令→去别的地方看结果"
-3. **Cloudflare 双活容灾** — Windows + Ubuntu 连同一个 tunnel，任一台挂了 OS 级自动切换
-4. **代码数据彻底分离** — `FINANCE_DATA_DIR` 环境变量，demo 公开 git 跟踪，真实数据物理隔离
-5. **UTF-8 零丢字分块** — 按行切割，不在多字节字符中间截断
-6. **fcntl 不死锁** — Linux 用 OS 内核管理文件锁，进程崩溃自动释放
-7. **线程池防雪崩** — max_workers=4 + MsgId 5 分钟去重
-
-> 哪些创新点不成立或夸大？哪些方向还可以深挖？
-
-### 声明 2: 准确性
-
-- 行情数据来自 akshare（东方财富 + 新浪双源），实时性如何？有没有更好的数据源？
-- FIRE 计算用 4% 规则 + 复利公式，是否足够专业？蒙特卡洛模拟是否有必要？
-- 定投回测用 akshare 历史数据，精度如何？对比专业回测平台（如 JoinQuant）差距在哪？
-- DeepSeek API 做财务分析，与专业 CFP 分析差距在哪？
-
-### 声明 3: 完备性
-
-- 当前 7 个命令覆盖了"存量分析+未来规划+风险监控"，作为个人理财系统，还缺什么？
-- 错误处理：akshare 全挂、DeepSeek 超时、企微推送失败——覆盖够吗？
-- 服务器稳定性：systemd + cron + fcntl + thread pool——有遗漏吗？
-
-### 声明 4: 落地可行性
-
-- 这套架构能否支撑一个真实个人长期使用？
-- 用真实数据（非 John Doe demo）跑，最大的风险是什么？
-- 从"demo 能跑"到"生产可用"之间还差什么？
-
----
-
-## 技术栈
-
-Python 3.12 · Flask + waitress · akshare · DeepSeek API · SQLite (WAL) · matplotlib
-企微自建应用 API + Webhook · Cloudflare Tunnel · systemd · fcntl
-
-## 数据安全
-
-| 措施 | 实现 |
-|------|------|
-| 代码数据分离 | `FINANCE_DATA_DIR` 环境变量切换 |
-| Demo 公开 | `finance_demo/` git 跟踪（John Doe 虚构） |
-| 真实隔离 | `finance/` gitignore |
-| 密钥保护 | `.env` gitignore |
-| 日志隔离 | `error.log` 循环写入, `*.log` gitignore |
-| 第三方最小化 | Server酱 仅通知不含数据；DeepSeek API 承诺不用于训练 |
+1. 这个数据结构合理吗？有没有更好的组织方式？
+2. 家庭分析应该在哪些维度上和个人分析不同？
+3. 爸妈的微信看板目前只读——要不要给他们加简单交互（比如点"我的资产"切到自己的数据）？
+4. 企微和爸妈微信要不要走不同的界面/推送渠道？
+5. 家庭版最需要哪些新的分析维度（遗产规划？教育金？养老协同？）
+6. 有什么我没考虑到的设计陷阱？
