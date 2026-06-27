@@ -423,13 +423,12 @@ def api_family():
         visibility = cfg.get("visibility", {})
         if not visibility.get("others_detail", False):
             for m_id in results["members"]:
+                member = results["members"][m_id]
                 if m_id != viewer:
-                    # 脱敏：移除投资细节，只保留现金+总额
-                    m = results["members"][m_id]
-                    m.pop("investments", None)
-                    m["detail_visible"] = False
+                    member.pop("investments", None)
+                    member["detail_visible"] = False
                 else:
-                    m["detail_visible"] = True
+                    member["detail_visible"] = True
         return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
