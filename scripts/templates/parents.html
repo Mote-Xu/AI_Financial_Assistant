@@ -41,9 +41,33 @@
     </div>
 
     <div style="padding:0 1rem 1rem;max-width:420px;margin:0 auto;width:100%">
-        <button class="btn" onclick="refresh()">🔄 刷新</button>
+        <button class="btn" onclick="refresh()" style="margin-bottom:0.5rem">🔄 刷新</button>
+        <button class="btn" onclick="triggerCheckup()" id="btn-checkup" style="background:#16a34a">🏠 生成家庭体检报告</button>
     </div>
+    <div id="status" style="text-align:center;padding:0 1rem;color:#888;font-size:0.8rem"></div>
     <div class="note">AI 财务助手 · 自动更新</div>
+
+    <script>
+        function triggerCheckup() {
+            const btn = document.getElementById('btn-checkup');
+            const st = document.getElementById('status');
+            btn.disabled = true;
+            btn.textContent = '⏳ AI 分析中...';
+            st.textContent = '预计 1-2 分钟';
+
+            fetch('/api/family/checkup?viewer=me', {method:'POST'})
+                .then(r => r.json())
+                .then(d => {
+                    st.textContent = '✅ 已提交，报告将发送到企微';
+                    setTimeout(() => { btn.disabled = false; btn.textContent = '🏠 生成家庭体检报告'; }, 3000);
+                })
+                .catch(() => {
+                    st.textContent = '❌ 提交失败，请重试';
+                    btn.disabled = false;
+                    btn.textContent = '🏠 生成家庭体检报告';
+                });
+        }
+    </script>
 
     <script>
         function loadData() {

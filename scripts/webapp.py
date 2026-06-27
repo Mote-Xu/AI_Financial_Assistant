@@ -468,6 +468,26 @@ def parents_view():
     return render_template("parents.html", now=datetime.now())
 
 
+@app.route("/api/family/checkup", methods=["POST"])
+def api_family_checkup():
+    """触发家庭体检——异步执行，返回 job_id"""
+    viewer = request.args.get("viewer", "me")
+    job_id = f"family_{datetime.now().strftime('%H%M%S')}"
+    _executor.submit(_run_family_checkup_web, job_id, viewer)
+    return jsonify({"job_id": job_id, "status": "accepted"})
+
+
+def _run_family_checkup_web(job_id: str, viewer: str):
+    """Web 端触发的家庭体检（同企微版本，但用 viewer 参数控制隐私）"""
+    try:
+        _run_family_checkup(viewer)
+        with _lock:
+            _jobs[job_id] = {"status": "done", "result": "家庭体检完成"}
+    except Exception as e:
+        with _lock:
+            _jobs[job_id] = {"status": "error", "result": str(e)}
+
+
 @app.route("/api/family")
 def api_family():
     """家庭汇总 JSON（根据 viewer 参数脱敏）"""
