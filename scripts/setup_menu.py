@@ -25,6 +25,7 @@ menu = {
             "name": "🤖 分析",
             "sub_button": [
                 {"name": "📋 月度体检", "type": "click", "key": "CHECKUP"},
+                {"name": "🏠 家庭体检", "type": "click", "key": "FAMILY"},
                 {"name": "💰 FIRE推算", "type": "click", "key": "FIRE"},
                 {"name": "📊 定投回测", "type": "click", "key": "BACKTEST"},
             ],

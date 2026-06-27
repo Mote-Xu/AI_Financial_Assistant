@@ -90,7 +90,7 @@ def wecom_callback():
         event_key = msg_xml.find("EventKey")
         if event_el is not None and event_el.text == "click" and event_key is not None:
             key = event_key.text
-            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助", "CHART": "/走势", "FIRE": "/fire", "BACKTEST": "/回测 510300", "HEALTH": "/健康"}
+            cmd_map = {"SNAPSHOT": "/快照", "CHECKUP": "/体检", "ALERT": "/预警", "HELP": "/帮助", "CHART": "/走势", "FIRE": "/fire", "BACKTEST": "/回测 510300", "HEALTH": "/健康", "FAMILY": "/家庭体检"}
             msg = cmd_map.get(key, "/帮助")
         else:
             return "", 200
@@ -149,6 +149,9 @@ def _handle_command(msg: str, user_id: str = "") -> str:
     elif msg in ("/fire", "fire", "财务自由", "退休"):
         _executor.submit(_run_fire, user_id)
         return "🏝️ 正在计算 FIRE 时间线..."
+    elif msg in ("/家庭体检", "/family", "家庭体检", "家庭"):
+        _executor.submit(_run_family_checkup, user_id)
+        return "🏠 正在运行家庭体检，1-2 分钟后结果会回到这里。"
     elif msg in ("/走势", "/history", "/chart", "走势", "历史"):
         _executor.submit(_run_chart, user_id)
         return "✅ 正在生成走势图..."
@@ -165,6 +168,7 @@ def _handle_command(msg: str, user_id: str = "") -> str:
             "· /fire — 财务自由推算\n"
             "· /回测 510300 — 定投回测\n"
             "· /健康 — 系统体检\n"
+            "· /家庭体检 — 全家分析\n"
             "· /帮助 — 菜单"
         )
     else:
@@ -294,6 +298,60 @@ def _run_health(user_id: str):
         if user_id:
             from wecom_app import send_to_user
             send_to_user(user_id, f"❌ 健康检查失败: {e}")
+
+
+def _run_family_checkup(user_id: str):
+    """后台运行家庭体检——聚合全家数据 + 隐私过滤 + AI 分析"""
+    try:
+        from wecom_app import send_to_user
+        from family_aggregator import aggregate, load_family_config, format_family_summary
+        from deepseek_analysis import call_deepseek, load_file
+        from config import FINANCE_DIR
+
+        send_to_user(user_id, "🏠 正在汇总家庭数据...")
+
+        # 1. 聚合家庭数据
+        results = aggregate(snapshot_dir=FINANCE_DIR)
+        cfg = load_family_config()
+        family_summary = format_family_summary(results, viewer=user_id)
+
+        # 2. 构建家庭分析上下文
+        context = family_summary + "\n\n"
+        # 附加全部成员的保险信息（脱敏）
+        for m_id, m_info in cfg.get("members", {}).items():
+            ins_file = (FAMILY_DIR if 'FAMILY_DIR' in dir() else FINANCE_DIR.parent / "family_demo") / "members" / m_id / "insurance.md"
+            fm_dir = FINANCE_DIR.parent / "family_demo"
+            ins_file = fm_dir / "members" / m_id / "insurance.md"
+            if ins_file.exists():
+                context += f"\n---\n## {m_info['name']} 的保险\n"
+                context += ins_file.read_text(encoding="utf-8")
+
+        # 附加家庭目标
+        goals_file = fm_dir / "household" / "goals.md"
+        if goals_file.exists():
+            context += f"\n---\n## 家庭目标\n"
+            context += goals_file.read_text(encoding="utf-8")
+
+        send_to_user(user_id, "🤖 正在 AI 分析家庭财务...")
+
+        # 3. 调用 DeepSeek
+        prompt = load_file("prompts/family_review.md")
+        result = call_deepseek(prompt, context)
+
+        # 4. 发结果
+        MAX = 1800
+        for i in range(0, len(result), MAX):
+            chunk = result[i:i+MAX]
+            prefix = "🏠 " if i == 0 else ""
+            send_to_user(user_id, prefix + chunk)
+        send_to_user(user_id, "✅ 家庭体检完成")
+
+    except Exception as e:
+        if user_id:
+            from wecom_app import send_to_user
+            send_to_user(user_id, f"❌ 家庭体检失败: {e}")
+        from config import log_error
+        log_error(f"Family checkup failed: {e}")
 
 
 def _run_chart(user_id: str):
