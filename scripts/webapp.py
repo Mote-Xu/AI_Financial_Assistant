@@ -179,6 +179,19 @@ def _handle_command(msg: str, user_id: str = "") -> str:
         _executor.submit(_run_briefing_refresh, user_id)
         return "🔄 正在重新生成情报简报，约需 1-2 分钟..."
     elif msg in ("/帮助", "/help", "帮助", "help"):
+        return (
+            "🤖 AI 财务助手\n\n"
+            "· /体检 — AI 分析 + 推送\n"
+            "· /快照 — 最新市值\n"
+            "· /预警 — 波动检查\n"
+            "· /走势 — 净值图表\n"
+            "· /fire — 财务自由推算\n"
+            "· /回测 510300 — 定投回测\n"
+            "· /简报 — 今日情报简报\n"
+            "· /健康 — 系统体检\n"
+            "· /家庭体检 — 全家分析\n"
+            "· /帮助 — 菜单"
+        )
     else:
         return f"未识别「{msg}」，/帮助 查看命令。"
 
