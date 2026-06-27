@@ -110,8 +110,9 @@ python scripts/family_engine.py                  # 家庭数据引擎
 - 行情：akshare（ETF/eastmoney + A股/Sina 双源）
 - 分析：DeepSeek API `deepseek-chat`（timeout=120s）
 - 推送：企微自建应用 API + Webhook + Server酱（兜底）
-- 部署：Ubuntu 24.04 (mote-home) + Windows 双活
-- Tunnel：Cloudflare ff961b4a（HA 双节点）
+- 部署：主阵地 Ubuntu 24.04 (mote-home) 24/7，Windows 仅作热备
+- Tunnel：Cloudflare ff961b4a（HA 双节点，主节点服务器）
+- 新功能优先部署在服务器上，利用 24/7 不间断运行
 
 ---
 
