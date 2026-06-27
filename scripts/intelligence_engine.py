@@ -47,12 +47,17 @@ PUSH_THRESHOLD = 8.0
 
 
 def should_push(brief: dict) -> bool:
-    """判断是否推送企微"""
+    """判断是否推送企微（最低门槛）"""
+    # act 级别无条件推送
     if brief.get("actionability") == "act":
-        return True  # act 级无条件推送（熔断除外）
-    if brief.get("confidence", 5) < 5:
-        return False  # 低置信度扣留
-    return calculate_push_score(brief) >= PUSH_THRESHOLD
+        return True
+    # 低置信度不推
+    if brief.get("confidence", 5) < 3:
+        return False
+    # ignore 不推
+    if brief.get("actionability") == "ignore":
+        return False
+    return True
 
 
 # ── 缓存操作 ──────────────────────────────────────────────────
