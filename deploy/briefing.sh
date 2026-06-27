@@ -7,12 +7,7 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
-# 用 conda 环境的 python（如果存在）
-if [ -f "$HOME/miniconda3/envs/deepseek_v4_api/bin/python" ]; then
-    PYTHON="$HOME/miniconda3/envs/deepseek_v4_api/bin/python"
-else
-    PYTHON=python3
-fi
+PYTHON=python3
 
 MIDDAY_FLAG=""
 if [ "$1" = "--midday" ]; then
