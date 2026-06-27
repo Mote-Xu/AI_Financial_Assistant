@@ -147,8 +147,15 @@ def _handle_command(msg: str, user_id: str = "") -> str:
         _executor.submit(_run_backtest, user_id, code)
         return f"📊 正在回测 {code}..."
     elif msg in ("/fire", "fire", "财务自由", "退休"):
-        _executor.submit(_run_fire, user_id)
-        return "🏝️ 正在计算 FIRE 时间线..."
+        _executor.submit(_run_fire, user_id, "base")
+        return "🏝️ 正在蒙特卡洛模拟（10,000次）..."
+    elif msg.startswith("/fire ") or msg.startswith("fire "):
+        parts = msg.split()
+        scenario = parts[-1] if len(parts) > 1 else "base"
+        if scenario not in ("base", "bull", "bear"):
+            scenario = "base"
+        _executor.submit(_run_fire, user_id, scenario)
+        return f"🏝️ 正在蒙特卡洛模拟（{scenario}，10,000次）..."
     elif msg in ("/家庭体检", "/family", "家庭体检", "家庭"):
         _executor.submit(_run_family_checkup, user_id)
         return "🏠 正在运行家庭体检，1-2 分钟后结果会回到这里。"
@@ -165,7 +172,7 @@ def _handle_command(msg: str, user_id: str = "") -> str:
             "· /快照 — 最新市值\n"
             "· /预警 — 波动检查\n"
             "· /走势 — 净值图表\n"
-            "· /fire — 财务自由推算\n"
+            "· /fire [bull|bear] — FIRE 蒙特卡洛\n"
             "· /回测 510300 — 定投回测\n"
             "· /简报 — 今日情报简报\n"
             "· /健康 — 系统体检\n"
@@ -185,7 +192,7 @@ def _handle_command(msg: str, user_id: str = "") -> str:
             "· /快照 — 最新市值\n"
             "· /预警 — 波动检查\n"
             "· /走势 — 净值图表\n"
-            "· /fire — 财务自由推算\n"
+            "· /fire [bull|bear] — FIRE 蒙特卡洛\n"
             "· /回测 510300 — 定投回测\n"
             "· /简报 — 今日情报简报\n"
             "· /健康 — 系统体检\n"
@@ -291,14 +298,14 @@ def _run_backtest(user_id: str, code: str = "510300"):
         log_error(f"Backtest failed: {e}")
 
 
-def _run_fire(user_id: str):
-    """运行 FIRE 模拟"""
+def _run_fire(user_id: str, scenario: str = "base"):
+    """运行 FIRE 蒙特卡洛模拟"""
     try:
         from wecom_app import send_to_user
-        from fire_simulator import simulate, format_report
-        send_to_user(user_id, "🏝️ 正在分析你的财务自由路径...")
-        result = simulate()
-        report = format_report(result)
+        from fire_simulator import simulate_monte_carlo, format_report
+        send_to_user(user_id, f"🏝️ 正在蒙特卡洛模拟（{scenario}，10,000次）...")
+        result = simulate_monte_carlo(scenario)
+        report = format_report(result, compact=True)
         send_to_user(user_id, report)
     except Exception as e:
         if user_id:
