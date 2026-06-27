@@ -467,19 +467,20 @@ def _run_chart(user_id: str):
 
 
 def _run_alert(user_id: str):
-    """后台运行预警"""
+    """后台运行预警（差异化阈值）"""
     try:
         from wecom_app import send_to_user
         from market_alert import check_alerts, push_alerts
-        alerts = check_alerts(threshold=3.0)
+        alerts = check_alerts()  # 使用差异化阈值
         if alerts:
-            # Build alert summary
             lines = [f"🚨 {len(alerts)} 只持仓触发预警:\n"]
-            for a in alerts:
-                emoji = "🔴" if a["change"] < 0 else "🟢"
-                lines.append(f"{emoji} {a['name']} {a['change']:+.2f}%  ¥{a['price']:.2f}")
+            for a in sorted(alerts, key=lambda x: abs(x["change"]), reverse=True):
+                sev = a.get("severity", "🔴" if a["change"] < 0 else "🟢")
+                lines.append(f"{sev} {a['name']} {a['change']:+.2f}%  "
+                             f"¥{a['price']:.2f}  [阈值 ±{a['threshold']}%]")
             if user_id:
                 send_to_user(user_id, "\n".join(lines))
+            push_alerts(alerts)
         else:
             if user_id:
                 send_to_user(user_id, "✅ 风平浪静，无异常波动。")
