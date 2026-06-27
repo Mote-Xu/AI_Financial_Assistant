@@ -143,9 +143,25 @@ def _handle_command(msg: str, user_id: str = "") -> str:
         _executor.submit(_run_alert, user_id)
         return "✅ 正在检查持仓波动..."
     elif msg.startswith("/回测") or msg.startswith("/backtest") or msg.startswith("回测"):
-        code = msg.split()[-1] if len(msg.split()) > 1 else "510300"
-        _executor.submit(_run_backtest, user_id, code)
-        return f"📊 正在回测 {code}..."
+        parts = msg.split()
+        code = "510300"
+        monthly = 2000
+        years = 5
+        if len(parts) > 1:
+            code = parts[1]
+        if len(parts) > 2:
+            try:
+                monthly = int(parts[2])
+            except ValueError:
+                monthly = 2000
+        if len(parts) > 3:
+            try:
+                years_str = parts[3].replace("年", "").replace("y", "")
+                years = int(years_str)
+            except ValueError:
+                years = 5
+        _executor.submit(_run_backtest, user_id, code, monthly, years)
+        return f"📊 正在回测 {code}（¥{monthly}/月 × {years}年）..."
     elif msg in ("/fire", "fire", "财务自由", "退休"):
         _executor.submit(_run_fire, user_id, "base")
         return "🏝️ 正在蒙特卡洛模拟（10,000次）..."
@@ -173,7 +189,7 @@ def _handle_command(msg: str, user_id: str = "") -> str:
             "· /预警 — 波动检查\n"
             "· /走势 — 净值图表\n"
             "· /fire [bull|bear] — FIRE 蒙特卡洛\n"
-            "· /回测 510300 — 定投回测\n"
+            "· /回测 [代码] [金额] [年数] — 定投回测\n"
             "· /简报 — 今日情报简报\n"
             "· /健康 — 系统体检\n"
             "· /家庭体检 — 全家分析\n"
@@ -193,7 +209,7 @@ def _handle_command(msg: str, user_id: str = "") -> str:
             "· /预警 — 波动检查\n"
             "· /走势 — 净值图表\n"
             "· /fire [bull|bear] — FIRE 蒙特卡洛\n"
-            "· /回测 510300 — 定投回测\n"
+            "· /回测 [代码] [金额] [年数] — 定投回测\n"
             "· /简报 — 今日情报简报\n"
             "· /健康 — 系统体检\n"
             "· /家庭体检 — 全家分析\n"
@@ -274,19 +290,18 @@ def _run_snapshot(user_id: str):
         log_error(f"快照失败: {e}")
 
 
-def _run_backtest(user_id: str, code: str = "510300"):
+def _run_backtest(user_id: str, code: str = "510300", monthly: int = 2000, years: int = 5):
     """运行定投回测"""
     try:
         from wecom_app import send_to_user
         from backtest import fetch_history, simulate_dca, compare_lump_sum, format_report, KNOWN_SYMBOLS
         name = KNOWN_SYMBOLS.get(code, code)
-        send_to_user(user_id, f"📊 正在拉取 {name} 历史数据...")
-        df = fetch_history(code, years=3)
+        send_to_user(user_id, f"📊 正在回测 {name}（¥{monthly}/月 × {years}年）...")
+        df = fetch_history(code, years=years)
         if df.empty:
             send_to_user(user_id, f"❌ {code} 无历史数据")
             return
-        monthly = 2000
-        total = monthly * 3 * 12
+        total = monthly * years * 12
         result = simulate_dca(df, monthly)
         result["code"] = code
         result["name"] = name
