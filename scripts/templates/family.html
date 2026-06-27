@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="家庭财务">
+    <title>家庭财务 · AI 助手</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,'Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;min-height:100vh}
+        .topbar{background:#1a1a2e;color:#fff;padding:1rem;display:flex;justify-content:space-between;align-items:center}
+        .topbar h1{font-size:1.1rem}
+        .topbar .badge{font-size:0.7rem;background:#16a34a;padding:0.2rem 0.5rem;border-radius:4px}
+        .scroll{padding:0.8rem;max-width:500px;margin:0 auto}
+
+        .hero{background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;border-radius:14px;padding:1.2rem;margin-bottom:0.8rem}
+        .hero .big{font-size:2rem;font-weight:800}
+        .hero .sub{font-size:0.8rem;opacity:0.7;margin-top:0.3rem}
+        .hero .row{display:flex;gap:1rem;margin-top:0.8rem}
+        .hero .item{flex:1}
+        .hero .item .val{font-size:1.1rem;font-weight:700}
+        .hero .item .lbl{font-size:0.7rem;opacity:0.7}
+
+        .card{background:#fff;border-radius:12px;padding:1rem;margin-bottom:0.8rem}
+        .card h2{font-size:0.95rem;margin-bottom:0.6rem;display:flex;justify-content:space-between}
+        .card h2 .tag{font-size:0.65rem;font-weight:400;padding:0.15rem 0.5rem;border-radius:4px}
+        .tag-red{background:#fee2e2;color:#dc2626}
+        .tag-yellow{background:#fef3c7;color:#d97706}
+        .tag-green{background:#dcfce7;color:#16a34a}
+
+        .member{background:#f8fafc;border-radius:10px;padding:0.8rem;margin-bottom:0.4rem;border-left:3px solid #2563eb}
+        .member.earner{border-left-color:#16a34a}
+        .member-name{font-weight:700;margin-bottom:0.3rem}
+        .member-stats{display:flex;gap:0.8rem;font-size:0.8rem;color:#555}
+        .member-stats span{white-space:nowrap}
+
+        .alert-item{padding:0.5rem 0;border-bottom:1px solid #f0f0f0;font-size:0.85rem}
+        .alert-item:last-child{border:none}
+
+        .btn{display:block;width:100%;padding:0.9rem;margin:0.5rem 0;border:none;border-radius:10px;
+             font-size:0.95rem;font-weight:600;cursor:pointer;text-align:center;color:#fff}
+        .btn-blue{background:#2563eb}.btn-green{background:#16a34a}.btn:disabled{opacity:0.5}
+        .btn-row{display:flex;gap:0.5rem}.btn-row .btn{flex:1}
+
+        .loader{text-align:center;padding:2rem;color:#888}
+        .ins-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0.3rem;text-align:center;font-size:0.75rem}
+        .ins-grid .val{font-weight:700;font-size:0.85rem}
+        .ins-grid .lbl{color:#888;font-size:0.65rem}
+        .gap{color:#dc2626}.ok{color:#16a34a}
+
+        .skeleton{background:linear-gradient(90deg,#e5e7eb 25%,#f3f4f6 50%,#e5e7eb 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px}
+        @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <h1>🏠 家庭财务</h1>
+        <span class="badge" id="status-badge">● 在线</span>
+    </div>
+
+    <div class="scroll" id="app">
+        <div class="loader">⏳ 加载中...</div>
+    </div>
+
+    <script>
+        const API = '/api/family/full?viewer=me';
+
+        async function load() {
+            try {
+                const r = await fetch(API);
+                const d = await r.json();
+                if (d.error) throw new Error(d.error);
+                render(d);
+            } catch(e) {
+                document.getElementById('app').innerHTML = `<div class="loader">加载失败: ${e.message}<br><button class="btn btn-blue" onclick="load()" style="margin-top:1rem;width:auto;display:inline-block">重试</button></div>`;
+            }
+        }
+
+        function render(d) {
+            const s = d.summary;
+            const mb = d.members;
+            const hh = d.household;
+            const alerts = d.alerts;
+
+            let alertHtml = alerts.length ? alerts.map(a => `<div class="alert-item">${a}</div>`).join('') : '<div class="alert-item" style="color:#16a34a">✅ 无异常</div>';
+
+            let membersHtml = Object.entries(mb).map(([id, m]) => {
+                let incStr = m.monthly_income ? `月入 ¥${(m.monthly_income/1000).toFixed(1)}k` : '';
+                let expStr = m.monthly_expense ? `月出 ¥${(m.monthly_expense/1000).toFixed(1)}k` : '';
+                let ins = m.insurance || {};
+                let gapHtml = (ins.gaps||[]).length ? ` <span class="gap">⚠${ins.gaps.length}</span>` : ' <span class="ok">✓</span>';
+                return `
+                <div class="member ${m.role}">
+                    <div class="member-name">${m.name} <span style="font-weight:400;color:#888;font-size:0.75rem">${m.role}</span>${m.is_self?' <span style="font-size:0.7rem;color:#2563eb">我</span>':''}</div>
+                    <div class="member-stats">
+                        <span>💰 ¥${(m.cash/10000).toFixed(1)}万</span>
+                        ${incStr ? `<span>📈 ${incStr}</span>` : ''}
+                        ${expStr ? `<span>📉 ${expStr}</span>` : ''}
+                        <span>🛡${gapHtml}</span>
+                    </div>
+                    ${m.is_self && ins.coverage ? `
+                    <div class="ins-grid" style="margin-top:0.5rem">
+                        ${['寿险','重疾','医疗','意外'].map(k => `
+                            <div><div class="val ${ins.coverage[k]?'ok':'gap'}">${ins.coverage[k]?((ins.coverage[k]/10000).toFixed(0)+'万'):'—'}</div><div class="lbl">${k}</div></div>
+                        `).join('')}
+                    </div>` : ''}
+                </div>`;
+            }).join('');
+
+            let html = `
+            <div class="hero">
+                <div class="sub">净资产</div>
+                <div class="big">¥${(s.net_worth/10000).toFixed(1)}<span style="font-size:1rem">万</span></div>
+                <div class="row">
+                    <div class="item"><div class="val">¥${(s.liquid_assets/10000).toFixed(1)}万</div><div class="lbl">流动资产</div></div>
+                    <div class="item"><div class="val">¥${(s.property_equity/10000).toFixed(0)}万</div><div class="lbl">房产净值</div></div>
+                    <div class="item"><div class="val">${s.savings_rate}%</div><div class="lbl">储蓄率</div></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>👨‍👩‍👦 家庭成员 <span class="tag tag-green">${Object.keys(mb).length}人</span></h2>
+                ${membersHtml}
+            </div>
+
+            <div class="card">
+                <h2>⚠️ 风险提醒 <span class="tag ${alerts.length?'tag-red':'tag-green'}">${alerts.length}项</span></h2>
+                ${alertHtml}
+            </div>
+
+            <div class="card">
+                <h2>💵 月度流水</h2>
+                <div class="member-stats" style="font-size:0.9rem;justify-content:space-around">
+                    <span>📈 入 ¥${(s.total_income/10000).toFixed(1)}万</span>
+                    <span>📉 出 ¥${(s.total_expense/10000).toFixed(1)}万</span>
+                    <span>💾 存 ¥${(s.monthly_savings/10000).toFixed(1)}万</span>
+                </div>
+                <div style="margin-top:0.5rem;font-size:0.8rem;color:#888">
+                    应急资金: <b>${s.emergency_months}个月</b> · 保费/年: <b>¥${(s.total_premium/10000).toFixed(1)}万</b>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>🏠 房产</h2>
+                <div style="font-size:0.85rem">
+                估值 ¥${(hh.property_value/10000).toFixed(0)}万 ·
+                贷款 ¥${(hh.property_loan/10000).toFixed(0)}万 ·
+                净值 ¥${(hh.property_equity/10000).toFixed(0)}万
+                </div>
+            </div>
+
+            <div class="btn-row">
+                <button class="btn btn-green" onclick="runAI()" id="btn-ai">🤖 AI 分析</button>
+                <button class="btn btn-blue" onclick="load()">🔄 刷新</button>
+            </div>
+            <div id="ai-status" style="text-align:center;padding:0.5rem;font-size:0.8rem;color:#888"></div>
+
+            <div class="card" id="ai-result" style="display:none">
+                <h2>🤖 AI 分析报告</h2>
+                <div id="ai-text" style="font-size:0.85rem;line-height:1.7;white-space:pre-wrap"></div>
+            </div>
+
+            <div style="text-align:center;padding:1rem;color:#999;font-size:0.7rem">
+                更新于 ${d.updated} · AI 财务助手
+            </div>`;
+
+            document.getElementById('app').innerHTML = html;
+            document.getElementById('status-badge').textContent = '● 在线';
+            document.getElementById('status-badge').style.background = '#16a34a';
+        }
+
+        async function runAI() {
+            const btn = document.getElementById('btn-ai');
+            const st = document.getElementById('ai-status');
+            const box = document.getElementById('ai-result');
+            const txt = document.getElementById('ai-text');
+
+            btn.disabled = true; btn.textContent = '⏳ 分析中...';
+            st.textContent = '正在调用 AI（约需 1 分钟）...';
+
+            try {
+                const r = await fetch('/api/family/ai?viewer=me', {method:'POST'});
+                const d = await r.json();
+                if (d.error) throw new Error(d.error);
+                txt.textContent = d.report;
+                box.style.display = 'block';
+                st.textContent = '✅ 分析完成';
+                btn.disabled = false; btn.textContent = '🤖 重新分析';
+            } catch(e) {
+                st.textContent = '❌ ' + e.message;
+                btn.disabled = false; btn.textContent = '🤖 AI 分析';
+            }
+        }
+
+        load();
+        setInterval(load, 300000);
+    </script>
+</body>
+</html>

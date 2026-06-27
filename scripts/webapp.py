@@ -301,51 +301,26 @@ def _run_health(user_id: str):
 
 
 def _run_family_checkup(user_id: str):
-    """后台运行家庭体检——聚合全家数据 + 隐私过滤 + AI 分析"""
+    """后台运行家庭体检"""
     try:
         from wecom_app import send_to_user
-        from family_aggregator import aggregate, load_family_config, format_family_summary
+        from family_engine import get_family_full, build_ai_context
         from deepseek_analysis import call_deepseek, load_file
-        from config import FINANCE_DIR
 
         send_to_user(user_id, "🏠 正在汇总家庭数据...")
+        data = get_family_full(user_id)
+        context = build_ai_context(data, user_id)
 
-        # 1. 聚合家庭数据
-        results = aggregate(snapshot_dir=FINANCE_DIR)
-        cfg = load_family_config()
-        family_summary = format_family_summary(results, viewer=user_id)
-
-        # 2. 构建家庭分析上下文
-        context = family_summary + "\n\n"
-        # 附加全部成员的保险信息（脱敏）
-        for m_id, m_info in cfg.get("members", {}).items():
-            ins_file = (FAMILY_DIR if 'FAMILY_DIR' in dir() else FINANCE_DIR.parent / "family_demo") / "members" / m_id / "insurance.md"
-            fm_dir = FINANCE_DIR.parent / "family_demo"
-            ins_file = fm_dir / "members" / m_id / "insurance.md"
-            if ins_file.exists():
-                context += f"\n---\n## {m_info['name']} 的保险\n"
-                context += ins_file.read_text(encoding="utf-8")
-
-        # 附加家庭目标
-        goals_file = fm_dir / "household" / "goals.md"
-        if goals_file.exists():
-            context += f"\n---\n## 家庭目标\n"
-            context += goals_file.read_text(encoding="utf-8")
-
-        send_to_user(user_id, "🤖 正在 AI 分析家庭财务...")
-
-        # 3. 调用 DeepSeek
+        send_to_user(user_id, "🤖 正在 AI 分析（约需 1 分钟）...")
         prompt = load_file("prompts/family_review.md")
         result = call_deepseek(prompt, context)
 
-        # 4. 发结果
         MAX = 1800
         for i in range(0, len(result), MAX):
             chunk = result[i:i+MAX]
             prefix = "🏠 " if i == 0 else ""
             send_to_user(user_id, prefix + chunk)
         send_to_user(user_id, "✅ 家庭体检完成")
-
     except Exception as e:
         if user_id:
             from wecom_app import send_to_user
@@ -463,9 +438,37 @@ def api_snapshot():
 # ── 手机控制台 (保留作为备用触发方式) ──────────────────
 
 @app.route("/home")
+@app.route("/family")
 def parents_view():
-    """爸妈专用——家庭看板"""
-    return render_template("parents.html", now=datetime.now())
+    """家庭看板（All-in-one）"""
+    return render_template("family.html", now=datetime.now())
+
+
+@app.route("/api/family/full")
+def api_family_full():
+    """完整家庭数据（隐私过滤）"""
+    viewer = request.args.get("viewer", "me")
+    try:
+        from family_engine import get_family_full
+        return jsonify(get_family_full(viewer))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/family/ai", methods=["POST"])
+def api_family_ai():
+    """触发家庭 AI 分析"""
+    viewer = request.args.get("viewer", "me")
+    try:
+        from family_engine import get_family_full, build_ai_context
+        from deepseek_analysis import call_deepseek, load_file
+        data = get_family_full(viewer)
+        context = build_ai_context(data, viewer)
+        prompt = load_file("prompts/family_review.md")
+        report = call_deepseek(prompt, context)
+        return jsonify({"report": report})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/family/checkup", methods=["POST"])
@@ -478,11 +481,11 @@ def api_family_checkup():
 
 
 def _run_family_checkup_web(job_id: str, viewer: str):
-    """Web 端触发的家庭体检（同企微版本，但用 viewer 参数控制隐私）"""
+    """Web 端触发的家庭体检"""
     try:
         _run_family_checkup(viewer)
         with _lock:
-            _jobs[job_id] = {"status": "done", "result": "家庭体检完成"}
+            _jobs[job_id] = {"status": "done", "result": "ok"}
     except Exception as e:
         with _lock:
             _jobs[job_id] = {"status": "error", "result": str(e)}
