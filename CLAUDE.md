@@ -1,7 +1,7 @@
 # AI 财务助手 — Claude Code 项目
 
 > Claude Code 交互层 + DeepSeek API 分析 + akshare 行情 + SQLite 存储
-> 最后更新：2026-06-26
+> 最后更新：2026-06-27
 
 ---
 
@@ -16,32 +16,45 @@ AI_Financial_Assistant/
 ├── .env                        # 🔒 API Keys（gitignore）
 ├── .env.example                # 配置模板（git 跟踪）
 ├── .gitignore
-├── run_auto.bat                # 定时体检入口
-├── run_alert.bat               # 每日预警入口
-├── setup_old_pc.bat            # 老电脑一键部署
+├── run_auto.bat / run_alert.bat / run_web.bat
 ├── finance_demo/               # Demo 数据（John Doe，git 跟踪）
-│   ├── assets.md / income.md / insurance.md / liabilities.md / goals.md
-│   ├── history.csv / portfolio_snapshot.md
-│   └── analysis_*.md
-├── finance/                    # 🔒 真实数据（gitignore，由 FINANCE_DATA_DIR 切换）
+├── family_demo/                # 家庭版 Demo 数据（git 跟踪）
+│   ├── family.json             # 成员定义 + 权限规则
+│   ├── members/{me,dad,mom}/   # 各自独立数据
+│   └── household/              # 共有资产 + 目标
+├── finance/                    # 🔒 真实数据（gitignore）
+├── family/                     # 🔒 真实家庭数据（gitignore）
+├── deploy/cloudflared/         # Tunnel 配置 + cron 脚本
 ├── scripts/
-│   ├── config.py               # 集中式路径配置（读 FINANCE_DATA_DIR 环境变量）
-│   ├── market_data.py          # 行情拉取（ETF+个股+基金 + CSV+DB 存档）
-│   ├── deepseek_analysis.py    # DeepSeek 分析（--no-push --auto-commit）
-│   ├── auto_runner.py          # 全自动流水线（--alert 模式）
-│   ├── market_alert.py         # 波动预警（--threshold 3.0）
-│   ├── history.py              # 历史查询 + 图表（--plot）
-│   ├── database.py             # SQLite 引擎
+│   ├── config.py               # 集中式路径配置 + 文件锁 + 日志
+│   ├── market_data.py          # 行情拉取（ETF+个股+基金）
+│   ├── deepseek_analysis.py    # DeepSeek 分析 + 数据校验阀
+│   ├── auto_runner.py          # 全自动流水线
+│   ├── market_alert.py         # 波动预警
+│   ├── history.py              # 历史查询 + matplotlib 图表
+│   ├── database.py             # SQLite 引擎 (WAL + timeout=30)
 │   ├── db_query.py             # 数据库查询工具
-│   ├── wecom_push.py           # 企微推送（文本+文件直发+图片）
-│   ├── wechat_push.py          # Server酱推送（兜底）
-│   ├── requirements.txt
-│   └── webapp.py                # Flask Dashboard + 企微回调端点
+│   ├── wecom_push.py           # 企微推送（UTF-8 安全分块）
+│   ├── wecom_app.py            # 企微自建应用 API（token 缓存 + thread lock）
+│   ├── wecom_crypto.py         # 企微消息 AES 加解密
+│   ├── wechat_push.py          # Server酱推送（仅通知，不含全文）
+│   ├── webapp.py               # Flask 服务（回调 + Dashboard + 家庭 API）
+│   ├── webapp_helpers.py       # Dashboard 辅助函数
+│   ├── family_engine.py        # 家庭引擎（聚合 + 隐私过滤）
+│   ├── fire_simulator.py       # FIRE 模拟器（4% 规则）
+│   ├── backtest.py             # 定投回测（DCA vs 一次性）
+│   ├── health_check.py         # 系统健康检查（5 项，每日推送）
+│   ├── backup.py               # 每日数据备份（zip，30 天保留）
+│   ├── validate.py             # 24 项自动化验证
+│   ├── setup_menu.py           # 企微菜单配置
+│   ├── start_tunnel.py         # cloudflared tunnel 启动
+│   └── templates/              # HTML 模板 (family.html etc)
 └── prompts/
     ├── monthly_review.md       # 月度体检
     ├── portfolio_rebalance.md  # 再平衡
     ├── insurance_audit.md      # 保障审计
-    └── market_event.md         # 市场应急
+    ├── market_event.md         # 市场应急
+    └── family_review.md        # 家庭财务体检
 ```
 
 ---
@@ -52,11 +65,8 @@ AI_Financial_Assistant/
 
 | 你说 | 执行 |
 |------|------|
-| "做月度体检" | `auto_runner.py` → 行情+分析+企微+微信推送 |
+| "做月度体检" | `auto_runner.py` → 行情+分析+推送 |
 | "要不要调仓" | `deepseek_analysis.py --prompt portfolio_rebalance` |
-| "保险够不够" | `deepseek_analysis.py --prompt insurance_audit` |
-| "大跌影响" | `deepseek_analysis.py --prompt market_event` |
-| "更新行情" | `market_data.py` |
 | "启动面板" | `python scripts/webapp.py` → http://localhost:5000 |
 
 ### CLI
@@ -65,16 +75,32 @@ AI_Financial_Assistant/
 conda activate deepseek_v4_api
 
 python scripts/market_data.py                    # 行情 + CSV + DB
-python scripts/history.py                        # 历史摘要
 python scripts/history.py --plot                 # 走势图
-python scripts/db_query.py                       # DB 总览
-python scripts/db_query.py --holding 600519      # 单只详情
 python scripts/market_alert.py --threshold 3.0   # 波动预警
 python scripts/auto_runner.py                    # 全自动
 python scripts/auto_runner.py --alert            # 仅预警
-python scripts/webapp.py                         # Flask Dashboard (dev)
-python scripts/webapp.py --prod                  # Flask Dashboard (生产)
+python scripts/webapp.py                         # Flask (dev)
+python scripts/webapp.py --prod                  # Flask (生产)
+python scripts/validate.py                       # 24 项验证
+python scripts/health_check.py                   # 系统体检
+python scripts/backup.py                         # 数据备份
+python scripts/fire_simulator.py                 # FIRE 计算
+python scripts/backtest.py --code 510300         # 定投回测
+python scripts/family_engine.py                  # 家庭数据引擎
 ```
+
+### 企微自建应用（手机端）
+
+| 命令 | 菜单 |
+|------|------|
+| 📈 行情 → 快照 / 走势 / 预警 | `/快照` `/走势` `/预警` |
+| 🤖 分析 → 体检 / 家庭体检 / FIRE / 回测 | `/体检` `/家庭体检` `/fire` `/回测 510300` |
+| ⚙️ 更多 → 帮助 | `/帮助` `/健康` |
+
+### 家庭网页
+
+- `https://finance-assistant.mote-pal.xyz/family` — All-in-one 家庭看板
+- `https://finance-assistant.mote-pal.xyz/home` — 爸妈微信看板
 
 ---
 
@@ -83,33 +109,35 @@ python scripts/webapp.py --prod                  # Flask Dashboard (生产)
 - Python：`deepseek_v4_api` conda 或纯 pip
 - 行情：akshare（ETF/eastmoney + A股/Sina 双源）
 - 分析：DeepSeek API `deepseek-chat`（timeout=120s）
-- 推送：企微 + 微信（双通道，发完整报告，不经过 GitHub）
-- 代理：启动时清 HTTP_PROXY，eastmoney 被拦自动切 Sina
+- 推送：企微自建应用 API + Webhook + Server酱（兜底）
+- 部署：Ubuntu 24.04 (mote-home) + Windows 双活
+- Tunnel：Cloudflare ff961b4a（HA 双节点）
 
 ---
 
-## 已知问题
+## 关键设计决策
 
-1. Git Bash 终端 UTF-8 中文乱码 → 设 `PYTHONIOENCODING=utf-8`
-2. A 股 eastmoney 被代理 127.0.0.1:19395 拦截 → Sina fallback
-3. 企微 Markdown 限 4096 字节 → 拆多段
-
----
-
-## 数据隐私
-
-- 当前数据为 John Doe 虚构演示
-- `PRIVATE.md` + `.env` + `finance_data.db` → gitignore
-- 分析时数据发送至 DeepSeek API
-- 报告通过企微和微信双通道直接推送，无需 GitHub
-- 代码与数据分离：`FINANCE_DATA_DIR` 环境变量切换 demo/真实数据目录
+1. **代码数据分离** — `FINANCE_DATA_DIR` 环境变量，demo/finance 物理隔离
+2. **UTF-8 零丢字** — 按行切分，不在多字节字符中间截断
+3. **fcntl 文件锁** — OS 内核管理，进程崩溃自动释放
+4. **线程池防雪崩** — max_workers=4 + MsgId 去重
+5. **数据校验阀** — 分析前校验快照完整性，脏数据不喂 LLM
+6. **家庭隐私隔离** — 三级可见度（自己/家庭汇总/他人脱敏）
 
 ---
 
-## 下一步
+## 待完成
 
-1. ~~企微文件直发~~ ✅
-2. ~~代码与数据分离~~ ✅
-3. ~~Flask Dashboard + 企微回调~~ ✅ 手机企微 @机器人 触发分析
-4. ~~Ubuntu 24/7 部署~~ ✅ mote-home 服务器，systemd + cron + HA tunnel
-5. FIRE 模拟器 / 定投回测
+1. 外部情报系统（每日市场+政策简报，AI 过滤家庭相关性）
+2. FIRE 蒙特卡洛模拟升级
+3. 定投回测参数化交互（`/回测 510300 2000 5年`）
+4. 预警阈值差异化（按资产类型）
+
+---
+
+## 服务器 cron
+
+- 03:00 每日数据备份
+- 09:00 健康检查推送
+- 14:45 月度体检（工作日）
+- 14:55 波动预警（工作日）

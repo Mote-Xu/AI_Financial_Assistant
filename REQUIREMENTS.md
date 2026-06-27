@@ -1,6 +1,6 @@
 # 功能需求清单
 
-> 最后更新：2026-06-26
+> 最后更新：2026-06-27
 
 ---
 
@@ -21,26 +21,49 @@
 
 ## P2 — 自动化 & 存储 ✅
 
-- [x] **推送通知**：企微多段 + Server酱兜底
-- [x] **历史净值追踪**：CSV + SQLite + 图表
-- [x] **定时自动**：auto_runner + 任务计划
+- [x] **推送通知**：企微自建应用 + 群 Webhook + Server酱兜底
+- [x] **历史净值追踪**：CSV + SQLite + matplotlib 图表
+- [x] **定时自动**：auto_runner + cron
 - [x] **市场波动预警**：单日涨跌超阈值推送
-- [x] **SQLite 数据库**：holdings/prices/snapshots/analysis_log
+- [x] **SQLite 数据库**：holdings/prices/snapshots/analysis_log (WAL mode)
 
-## P3 — 下一阶段
+## P3 — 企微双向互动 ✅
 
-- [x] **企微文件直发**：附件推送，手机直接打开（无需 GitHub 登录）
-- [x] **代码与数据分离**：`FINANCE_DATA_DIR` 环境变量切换，repo public 安全
-- [ ] **Flask Dashboard**：Web 面板 + cloudflared tunnel
-- [ ] **企微双向互动**：@机器人 → Flask 回调
-- [ ] **Ubuntu 24/7 部署**：cron 替代 Windows 计划任务
-- [ ] **FIRE 模拟器**
-- [ ] **定投回测**
+- [x] **企微文件直发**：附件推送，手机直接打开
+- [x] **代码与数据分离**：config.py + FINANCE_DATA_DIR 切换
+- [x] **自建应用回调**：AES-256-CBC 加解密 + 命令路由
+- [x] **菜单交互**：📈 行情/🤖 分析/⚙️ 更多
+- [x] **8 个命令**：快照 / 体检 / 预警 / FIRE / 回测 / 走势 / 健康 / 家庭体检
+
+## P4 — 生产保障 ✅
+
+- [x] **文件锁**：Linux fcntl.flock（OS 内核管理）
+- [x] **线程池**：max_workers=4 + MsgId 去重
+- [x] **数据校验**：分析前 validate_context()
+- [x] **每日备份**：zip 打包（30 天保留）
+- [x] **健康检查**：5 项（SQLite/akshare/DeepSeek/磁盘/数据文件）
+- [x] **HA 容灾**：Cloudflare Tunnel 双活
+- [x] **Ubuntu 24/7**：systemd + cron 自动化
+
+## P5 — 家庭版 ✅ (demo 阶段)
+
+- [x] **多成员数据模型**：family.json + members/{me,dad,mom}
+- [x] **家庭汇总引擎**：隐私过滤 + 脱敏聚合
+- [x] **家庭 AI 分析**：6 维度（收入依赖/现金流/保障缺口/资产/目标/改进）
+- [x] **家庭网页看板**：All-in-one dashboard (/family)
+- [x] **爸妈微信看板**：只读 + 体检按钮 (/home)
+
+## P6 — 下一阶段
+
+- [ ] **外部情报系统**：每日市场+政策简报 + AI 家庭相关性过滤 + 追问
+- [ ] **FIRE 蒙特卡洛**：随机模拟升级
+- [ ] **定投回测参数化**：`/回测 510300 2000 5年`
+- [ ] **预警阈值差异化**：按资产类型
 
 ## 非功能需求 ✅
 
-- [x] 真实数据不入 git
-- [x] 脱敏数据可运行 (demo 在 `finance_demo/`)
-- [x] 错误处理健壮（API/网络/代理）
+- [x] 真实数据不入 git（代码数据分离）
+- [x] 脱敏数据可运行（finance_demo + family_demo）
+- [x] 错误处理健壮（API/网络/代理/并发/死锁）
 - [x] 输出可读（中文/分层/数字）
 - [x] Repo public 安全展示
