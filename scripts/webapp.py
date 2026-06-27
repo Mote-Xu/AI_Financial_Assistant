@@ -406,8 +406,33 @@ def api_snapshot():
 
 @app.route("/home")
 def parents_view():
-    """爸妈专用——只读看板，大字体，无操作"""
+    """爸妈专用——家庭看板"""
     return render_template("parents.html", now=datetime.now())
+
+
+@app.route("/api/family")
+def api_family():
+    """家庭汇总 JSON（根据 viewer 参数脱敏）"""
+    viewer = request.args.get("viewer", "me")
+    try:
+        from family_aggregator import aggregate, load_family_config
+        from config import FINANCE_DIR
+        results = aggregate(snapshot_dir=FINANCE_DIR)
+        cfg = load_family_config()
+        # 根据查看者过滤
+        visibility = cfg.get("visibility", {})
+        if not visibility.get("others_detail", False):
+            for m_id in results["members"]:
+                if m_id != viewer:
+                    # 脱敏：移除投资细节，只保留现金+总额
+                    m = results["members"][m_id]
+                    m.pop("investments", None)
+                    m["detail_visible"] = False
+                else:
+                    m["detail_visible"] = True
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/control")

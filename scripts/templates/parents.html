@@ -4,35 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="家庭财务">
     <title>家庭财务</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:-apple-system,'Microsoft YaHei',sans-serif;background:#f5f5f5;min-height:100vh;
-             display:flex;flex-direction:column}
+        body{font-family:-apple-system,'Microsoft YaHei',sans-serif;background:#f5f5f5;min-height:100vh}
         .header{background:#2563eb;color:#fff;text-align:center;padding:1.5rem 1rem 1rem}
         .header h1{font-size:1.3rem;font-weight:600}
         .header p{font-size:0.8rem;opacity:0.8;margin-top:0.25rem}
-        .cards{flex:1;padding:1rem;display:flex;flex-direction:column;gap:0.8rem;max-width:400px;margin:0 auto;width:100%}
+        .cards{padding:1rem;display:flex;flex-direction:column;gap:0.8rem;max-width:420px;margin:0 auto;width:100%}
         .card{background:#fff;border-radius:12px;padding:1.2rem}
         .card h2{font-size:1rem;margin-bottom:0.75rem;color:#333}
         .stat-row{display:flex;gap:0.5rem}
         .stat{flex:1;text-align:center;padding:0.6rem 0.3rem;background:#f8fafc;border-radius:8px}
         .stat .val{font-size:1.1rem;font-weight:700}
         .stat .lbl{font-size:0.7rem;color:#888;margin-top:0.15rem}
-        .green{color:#16a34a}.red{color:#dc2626}.blue{color:#2563eb}
+        .blue{color:#2563eb}.green{color:#16a34a}.red{color:#dc2626}
+        .member-item{display:flex;justify-content:space-between;align-items:center;
+                     padding:0.5rem 0;border-bottom:1px solid #f0f0f0;font-size:0.9rem}
+        .member-item:last-child{border:none}
+        .role{font-size:0.7rem;color:#888;background:#f0f0f0;padding:0.15rem 0.5rem;border-radius:4px}
         .btn{display:block;width:100%;padding:1rem;margin:0.5rem 0;border:none;border-radius:10px;
-             font-size:1rem;font-weight:600;cursor:pointer;text-align:center}
+             font-size:1rem;font-weight:600;cursor:pointer;text-align:center;background:#2563eb;color:#fff}
         .btn:active{opacity:0.8}
-        .btn-fresh{background:#2563eb;color:#fff}
-        .btn-check{background:#16a34a;color:#fff}
-        .loading{text-align:center;padding:1rem;color:#888;font-size:0.9rem}
-        .note{text-align:center;color:#999;font-size:0.75rem;padding:1rem}
+        .loading{text-align:center;padding:2rem;color:#888}
+        .note{text-align:center;color:#999;font-size:0.7rem;padding:1rem}
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>📊 家庭财务</h1>
+        <h1>🏠 家庭财务</h1>
         <p id="updatetime">加载中...</p>
     </div>
 
@@ -40,68 +40,59 @@
         <div class="loading">正在加载...</div>
     </div>
 
-    <div style="padding:0 1rem 1rem;max-width:400px;margin:0 auto;width:100%">
-        <button class="btn btn-fresh" onclick="refresh()">🔄 刷新数据</button>
+    <div style="padding:0 1rem 1rem;max-width:420px;margin:0 auto;width:100%">
+        <button class="btn" onclick="refresh()">🔄 刷新</button>
     </div>
-    <div class="note">数据来自 AI 财务助手 · 自动更新</div>
+    <div class="note">AI 财务助手 · 自动更新</div>
 
     <script>
-        const API = '/api/snapshot';
-
         function loadData() {
-            fetch(API).then(r => r.json()).then(d => {
-                if (!d || !d.total_value) {
-                    document.getElementById('content').innerHTML = '<div class="loading">暂无数据</div>';
-                    return;
-                }
-                let pnlClass = d.total_pnl >= 0 ? 'green' : 'red';
-                let pnlSign = d.total_pnl >= 0 ? '+' : '';
-                let pctClass = d.total_pnl_pct >= 0 ? 'green' : 'red';
-                let pctSign = d.total_pnl_pct >= 0 ? '+' : '';
+            fetch('/api/family?viewer=me').then(r => r.json()).then(d => {
+                if (d.error) { document.getElementById('content').innerHTML = '<div class="loading">' + d.error + '</div>'; return; }
+                let f = d.family_total;
+                let members = d.members;
+
+                let netWorth = (f.net_worth / 10000).toFixed(1);
+                let liquid = ((f.cash + f.investments) / 10000).toFixed(1);
 
                 let html = `
                 <div class="card">
-                    <h2>💰 总览</h2>
+                    <h2>💰 家庭总览</h2>
                     <div class="stat-row">
                         <div class="stat">
-                            <div class="val blue">¥${(d.total_value/10000).toFixed(1)}万</div>
-                            <div class="lbl">总市值</div>
+                            <div class="val blue">¥${netWorth}万</div>
+                            <div class="lbl">净资产</div>
                         </div>
                         <div class="stat">
-                            <div class="val ${pnlClass}">${pnlSign}¥${(d.total_pnl/10000).toFixed(1)}万</div>
-                            <div class="lbl">总盈亏</div>
+                            <div class="val">¥${liquid}万</div>
+                            <div class="lbl">流动资产</div>
                         </div>
                         <div class="stat">
-                            <div class="val ${pctClass}">${pctSign}${d.total_pnl_pct}%</div>
-                            <div class="lbl">收益率</div>
+                            <div class="val">¥${(f.property_equity/10000).toFixed(0)}万</div>
+                            <div class="lbl">房产</div>
                         </div>
                     </div>
+                    ${f.debt > 0 ? '<div style="margin-top:0.5rem;font-size:0.8rem;color:#888">负债: ¥' + (f.debt/10000).toFixed(0) + '万</div>' : ''}
                 </div>
+
                 <div class="card">
-                    <h2>📐 配置</h2>
-                    <div style="font-size:0.85rem;line-height:1.8">
-                        🟦 ETF ${d.config.etf_pct}% &nbsp;
-                        🟥 股票 ${d.config.stock_pct}% &nbsp;
-                        🟩 基金 ${d.config.fund_pct}% &nbsp;
-                        ⬛ 现金 ${d.config.cash}%
-                    </div>
-                </div>
-                <div class="card">
-                    <h2>📋 持仓 (${d.holdings.length} 只)</h2>
-                    ${d.holdings.map(h => `
-                        <div style="display:flex;justify-content:space-between;align-items:center;
-                                    padding:0.4rem 0;border-bottom:1px solid #f0f0f0;font-size:0.85rem">
-                            <span>${h.name}</span>
-                            <span style="font-weight:600">${h.value}</span>
-                            <span class="${h.pnl.includes('🟢')?'green':'red'}" style="font-size:0.75rem">${h.pnl}</span>
+                    <h2>👨👩👦 成员</h2>
+                    ${Object.entries(members).map(([id, m]) => `
+                        <div class="member-item">
+                            <div>
+                                <strong>${m.name}</strong>
+                                <span class="role">${m.role}</span>
+                                ${m.detail_visible ? '<span style="font-size:0.7rem;color:#2563eb;margin-left:0.3rem">🔍</span>' : ''}
+                            </div>
+                            <span style="font-weight:600">¥${(m.total/10000).toFixed(1)}万</span>
                         </div>
                     `).join('')}
                 </div>`;
 
                 document.getElementById('content').innerHTML = html;
                 document.getElementById('updatetime').textContent = '更新于 ' + (d.updated || '--');
-            }).catch(() => {
-                document.getElementById('content').innerHTML = '<div class="loading">加载失败，请检查网络</div>';
+            }).catch(e => {
+                document.getElementById('content').innerHTML = '<div class="loading">加载失败，下拉刷新</div>';
             });
         }
 
@@ -111,7 +102,6 @@
         }
 
         loadData();
-        // Auto refresh every 5 min
         setInterval(loadData, 300000);
     </script>
 </body>

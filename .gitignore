@@ -5,6 +5,7 @@ PRIVATE.md
 # Real financial data directory (gitignored)
 # Demo data lives in finance_demo/ (git-tracked)
 finance/
+family/
 
 # Auto-generated binary files (even in demo dir)
 finance_demo/finance_data.db
