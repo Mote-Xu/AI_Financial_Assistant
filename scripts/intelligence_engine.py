@@ -446,11 +446,8 @@ def push_briefing(data: dict, midday: bool = False):
 
     # 推送到企微自建应用
     try:
-        from wecom_app import send_markdown_to_user, WECOM_APP_USERID
-        user_id = WECOM_APP_USERID if hasattr(__import__("wecom_app"), "WECOM_APP_USERID") else None
-        if not user_id:
-            # 尝试从环境获取
-            user_id = os.environ.get("WECOM_APP_USERID", "")
+        from wecom_app import send_markdown_to_user
+        user_id = os.environ.get("WECOM_APP_USERID", "")
         if user_id:
             send_markdown_to_user(user_id, message)
             print("📱 企微 Markdown 推送完成")

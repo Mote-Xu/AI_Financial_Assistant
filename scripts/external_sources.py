@@ -159,8 +159,8 @@ def fetch_macro_data() -> list[dict]:
             if df is None or df.empty:
                 continue
 
-            # 取最近一行
-            latest = df.tail(1).iloc[0]
+            # 取最新一行（akshare 宏观接口按时间倒序，head(1) 是最新）
+            latest = df.head(1).iloc[0]
             # 把整行转成可读文本
             parts = []
             for col in df.columns:
