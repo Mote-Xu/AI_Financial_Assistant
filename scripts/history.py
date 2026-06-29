@@ -12,12 +12,16 @@ from config import HISTORY_FILE, CHART_FILE, ensure_finance_dir
 # 修复中文显示
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.font_manager as _fm
+# 强制重建字体缓存（确保新安装的字体生效）
+_fm._load_fontmanager(try_read_cache=False)
 import matplotlib.pyplot as plt
 import platform as _platform
 if _platform.system() == "Windows":
     _font_list = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "DejaVu Sans"]
 else:
-    _font_list = ["Noto Sans CJK SC", "WenQuanYi Micro Hei", "Microsoft YaHei", "SimHei", "DejaVu Sans"]
+    _font_list = ["Noto Sans CJK SC", "WenQuanYi Micro Hei", "DejaVu Sans"]
+plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["font.sans-serif"] = _font_list
 plt.rcParams["axes.unicode_minus"] = False
 
