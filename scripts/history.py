@@ -13,10 +13,12 @@ from config import HISTORY_FILE, CHART_FILE, ensure_finance_dir
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-try:
-    plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "DejaVu Sans"]
-except Exception:
-    pass
+import platform as _platform
+if _platform.system() == "Windows":
+    _font_list = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "DejaVu Sans"]
+else:
+    _font_list = ["Noto Sans CJK SC", "WenQuanYi Micro Hei", "Microsoft YaHei", "SimHei", "DejaVu Sans"]
+plt.rcParams["font.sans-serif"] = _font_list
 plt.rcParams["axes.unicode_minus"] = False
 
 
