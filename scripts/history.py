@@ -12,18 +12,35 @@ from config import HISTORY_FILE, CHART_FILE, ensure_finance_dir
 # 修复中文显示
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.font_manager as _fm
-# 强制重建字体缓存（确保新安装的字体生效）
-_fm._load_fontmanager(try_read_cache=False)
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as _fm
 import platform as _platform
+
+# 找到中文字体路径
+_cjk_font_path = None
 if _platform.system() == "Windows":
-    _font_list = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "DejaVu Sans"]
+    _candidates = ["C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf"]
 else:
-    _font_list = ["Noto Sans CJK SC", "WenQuanYi Micro Hei", "DejaVu Sans"]
-plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = _font_list
-plt.rcParams["axes.unicode_minus"] = False
+    _candidates = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKsc-VF.otf",
+    ]
+for _p in _candidates:
+    if Path(_p).exists():
+        _cjk_font_path = _p
+        break
+
+if _cjk_font_path:
+    _cjk_font = _fm.FontProperties(fname=_cjk_font_path)
+else:
+    # Fallback: 尝试 rcParams
+    _cjk_font = None
+    if _platform.system() == "Windows":
+        plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
+    else:
+        plt.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "WenQuanYi Micro Hei", "DejaVu Sans"]
+    plt.rcParams["axes.unicode_minus"] = False
 
 
 def load_history() -> list:
@@ -90,6 +107,14 @@ def plot_history():
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
+    # 应用中文字体
+    fp = _cjk_font if _cjk_font else None
+    def _fp(kw=None):
+        """返回 fontproperties kwarg 或空"""
+        if fp:
+            return {"fontproperties": fp}
+        return kw or {}
+
     # 市值 vs 成本
     ax1.fill_between(dates, cost, investment,
                      where=[i >= c for i, c in zip(investment, cost)],
@@ -99,19 +124,19 @@ def plot_history():
                      color="red", alpha=0.15, label="浮亏")
     ax1.plot(dates, investment, "b-", linewidth=2, label="市值")
     ax1.plot(dates, cost, "gray", linewidth=1, linestyle="--", label="成本")
-    ax1.set_ylabel("金额 (¥)")
-    ax1.legend(loc="upper left")
+    ax1.set_ylabel("金额 (¥)", **_fp())
+    ax1.legend(loc="upper left", prop=fp)
     ax1.grid(True, alpha=0.3)
-    ax1.set_title("投资组合市值走势")
+    ax1.set_title("投资组合市值走势", **_fp())
 
     # 收益率
     colors = ["green" if p >= 0 else "red" for p in pnl_pct]
     ax2.bar(dates, pnl_pct, color=colors, alpha=0.7, width=0.8)
     ax2.axhline(y=0, color="gray", linewidth=0.5)
-    ax2.set_ylabel("收益率 (%)")
-    ax2.set_xlabel("日期")
+    ax2.set_ylabel("收益率 (%)", **_fp())
+    ax2.set_xlabel("日期", **_fp())
     ax2.grid(True, alpha=0.3)
-    ax2.set_title("累计收益率变化")
+    ax2.set_title("累计收益率变化", **_fp())
 
     ax2.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
     fig.autofmt_xdate()
@@ -120,7 +145,7 @@ def plot_history():
     out = CHART_FILE
     plt.savefig(out, dpi=150, bbox_inches="tight")
     print(f"📊 图表已保存: {out}")
-    plt.show()
+    plt.close(fig)
 
 
 if __name__ == "__main__":
