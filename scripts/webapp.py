@@ -515,7 +515,8 @@ def history_page():
         plot_history()
     except Exception:
         pass
-    chart_url = "/chart" if CHART_FILE.exists() else None
+    chart_mtime = int(CHART_FILE.stat().st_mtime) if CHART_FILE.exists() else 0
+    chart_url = f"/chart?v={chart_mtime}" if chart_mtime else None
     rows = _history_summary()
     return render_template("history.html", rows=rows,
                            chart_url=chart_url, now=datetime.now())
